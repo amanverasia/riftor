@@ -87,6 +87,10 @@ Each successful check saves its observations to `.riftor/evidence.jsonl` in a
 SHA-256-linked record chain; `/evidence list` verifies the chain and displays
 recent records. Reports preserve older HTTP evidence that predates pinned-IP
 recording.
+The shared action gateway caps activity at 60 network checks per workspace per
+rolling minute and enforces a two-second cooldown for the same normalized
+target and activity. The budget persists across restarts and engagements;
+failed or cancelled approved attempts still use a slot.
 Operators can record severity- and confidence-rated findings tied to evidence,
 track each as open, resolved, or accepted, and export a local Markdown or JSON
 report with `/report markdown` or `/report json`. `/archive export <path>` saves
@@ -95,7 +99,7 @@ all engagements, evidence, and findings as one JSON archive. Import it with
 engagements stay inactive until selected with `/engagement use`; review their
 authorization before running checks. The archive checksum detects accidental
 changes but does not authenticate its creator. Archive files do not include
-local audit logs, reports, or Pi provider credentials.
+local audit logs, reports, action-budget history, or Pi provider credentials.
 To restore an archive, start Riftor in a different workspace that has no
 `.riftor` directory, then run `/archive import <path>`.
 

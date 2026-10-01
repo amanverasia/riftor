@@ -2,6 +2,8 @@ import type { EvidenceStore } from "../engagement/evidence-store.js";
 import type { EngagementStore } from "../engagement/store.js";
 import type { Engagement } from "../engagement/types.js";
 import { evaluateAction } from "./policy.js";
+import { reserveActionBudget, type ActionBudgetConfig } from "./action-budget.js";
+import { normalizeTarget } from "./scope.js";
 
 export interface AuthorizedAction {
   kind: string;
@@ -22,6 +24,7 @@ export async function authorizeAction(
     engagementStore: EngagementStore;
     evidenceStore: EvidenceStore;
     approve: (message: string) => Promise<boolean>;
+    budgetConfig?: ActionBudgetConfig;
   },
 ): Promise<ActionAuthorization> {
   const { engagementStore, evidenceStore, approve } = dependencies;
@@ -69,6 +72,20 @@ export async function authorizeAction(
     if (action.signal?.aborted) {
       await deny(currentEngagement, "Action cancelled before execution");
       return { allowed: false, reason: "Action cancelled" };
+    }
+
+    let budget: Awaited<ReturnType<typeof reserveActionBudget>>;
+    try {
+      budget = await reserveActionBudget(engagementStore.workdir, normalizeTarget(action.target), action.activity, dependencies.budgetConfig);
+    } catch (error) {
+      const reason = `Action budget unavailable: ${error instanceof Error ? error.message : "invalid budget state"}`;
+      await engagementStore.appendAudit({ kind: "action_budget_denied", engagementId: currentEngagement.id, target: action.target, activity: action.activity, reason });
+      return { allowed: false, reason };
+    }
+    if (!budget.allowed) {
+      const reason = `Rate limit reached (${budget.limit}); retry in ${Math.ceil(budget.retryAfterMs / 1000)} second(s)`;
+      await engagementStore.appendAudit({ kind: "rate_limited", engagementId: currentEngagement.id, target: action.target, activity: action.activity, retryAfterMs: budget.retryAfterMs, limit: budget.limit });
+      return { allowed: false, reason };
     }
 
     await engagementStore.appendAudit({

@@ -23,7 +23,14 @@ application data. DNS lookup returns a bounded set of A and AAAA records.
 
 Successful observations are stored in a local SHA-256-linked evidence file.
 Engagement state, audit records, findings, and reports are stored beneath
-`.riftor/` with owner-only file and directory permissions where supported.
+`.riftor/` with owner-only file and directory permissions where supported. The
+shared action gateway allows up to 60 network checks per rolling workspace
+minute and applies a two-second cooldown for the same normalized target and
+activity across engagements and processes. Each approved attempt reserves a
+slot before network work, so failures and cancellations still count. Budget
+state is local to the workspace and is not included in portable archives. It is
+a pacing guard, not a tamper-resistant quota: the local owner can edit it, and
+system-clock changes can affect its rolling windows.
 Markdown reports escape operator- and target-supplied values before rendering.
 Workspace archives export engagements, evidence, and findings. Imports validate
 records into a staging directory and activate no engagement automatically.
@@ -73,9 +80,9 @@ finding is correct.
   certificate chain as a separate assessment result.
 - Provider setup uses environment variables or Pi-compatible configuration
   files; Riftor does not yet provide its own credential-entry wizard.
-- Rate controls, signed evidence, remote backups, multi-user access control, and
-  external audit storage are not implemented. Archive SHA-256 checks detect
-  accidental changes but are not a signature and do not authenticate the source.
+- Signed evidence, remote backups, multi-user access control, and external audit
+  storage are not implemented. Archive SHA-256 checks detect accidental changes
+  but are not a signature and do not authenticate the source.
 - Policy and state files are local to the current working directory. Operators
   should use a dedicated workspace and protect backups and generated reports.
 

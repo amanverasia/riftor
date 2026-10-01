@@ -13,16 +13,22 @@ interface StoredState {
 }
 
 export class EngagementStore {
+  readonly #workdir: string;
   readonly #directory: string;
   readonly #statePath: string;
   readonly #auditPath: string;
   readonly #actionLockPath: string;
 
   constructor(workdir: string) {
+    this.#workdir = workdir;
     this.#directory = join(workdir, ".riftor");
     this.#statePath = join(this.#directory, "engagement.json");
     this.#auditPath = join(this.#directory, "audit.jsonl");
     this.#actionLockPath = join(this.#directory, "action.lock");
+  }
+
+  get workdir(): string {
+    return this.#workdir;
   }
 
   async load(): Promise<Engagement | null> {

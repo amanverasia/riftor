@@ -112,3 +112,25 @@ test("approved HTTP and DNS adapters pin, audit, and persist successful observat
     assert.equal(await engagementStore.load(), null);
   });
 });
+
+test("rate-limited adapter call makes no additional network request", async () => {
+  await withTempDir(async (directory) => {
+    const engagementStore = new EngagementStore(directory);
+    const evidenceStore = new EvidenceStore(directory);
+    await engagementStore.save(engagement());
+    let requests = 0;
+    const tool = createHttpHeadersTool(engagementStore, evidenceStore, async () => true, {
+      createResolver: () => ({ resolve4: async () => ["93.184.216.34"], resolve6: async () => [], cancel() {} }),
+      sendHeadRequest: async () => {
+        requests += 1;
+        return { status: 200, statusText: "OK", headers: {} };
+      },
+    });
+    const first = await tool.execute("rate-1", { target: "example.com" }, undefined, undefined, {});
+    const second = await tool.execute("rate-2", { target: "example.com" }, undefined, undefined, {});
+    assert.match(first.content[0].text, /HTTP 200 OK/);
+    assert.match(second.content[0].text, /Rate limit reached/);
+    assert.equal(requests, 1);
+    assert.equal((await evidenceStore.list()).length, 1);
+  });
+});

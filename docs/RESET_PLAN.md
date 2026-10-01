@@ -96,8 +96,11 @@ validated IPs; private addresses require explicit IP/CIDR scope. Authorization
 is held under a cross-process lease and rechecked immediately before network
 activity. All three tools record outcomes in the local audit log and successful
 observations in the SHA-256-linked evidence chain, inspectable with `/evidence
-list`. Broader lifecycle hooks, centralized adapter registration, and rate
-controls remain planned.
+list`. A persistent action budget permits at most 60 checks per workspace in a
+rolling minute and applies a two-second cooldown per normalized target/activity
+pair across engagements and Riftor processes. Failed or cancelled actions still
+consume their reservation. Broader lifecycle hooks and centralized adapter
+registration remain planned.
 
 Engagement state now retains multiple saved authorizations and lets the operator
 select the active one; the previous single-engagement state file migrates when
