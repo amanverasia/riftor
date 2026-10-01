@@ -95,12 +95,22 @@ evidence records and can be inspected with `/evidence list`. Broader lifecycle
 hooks, centralized adapter registration, and shared concurrency/rate controls
 remain planned.
 
+Engagement state now retains multiple saved authorizations and lets the operator
+select the active one; the previous single-engagement state file migrates when
+next written, preserving its existing engagement.
+
 ### 3. Evidence and assessment workflow
 
 - Add durable evidence capture, provenance, findings, triage, and deduplication.
 - Add operator-reviewed workflows and report generation.
 - Start with a small set of well-defined, low-impact integrations, then expand
   only when each adapter has target extraction and policy coverage.
+
+Progress: operators can create and update findings tied to verified evidence,
+and export Markdown or JSON reports containing engagement scope, authorization,
+findings, and evidence provenance. Report output is stored under `.riftor/reports`
+with owner-only permissions. Finding deduplication, import/export, richer
+evidence types, and additional assessment adapters remain planned.
 
 ### 4. Extensibility and release
 
@@ -124,9 +134,9 @@ remain planned.
 The standalone CLI, local engagement record, authorization expiry checks,
 host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
 records are in place. One policy-gated HTTP headers adapter is wired into Pi;
-the Pi shell, file, and default tools stay disabled. Basic hashed evidence
-capture is in place; evidence export, findings, reporting, and additional
-adapters remain planned.
+the Pi shell, file, and default tools stay disabled. Hashed evidence capture,
+operator-reviewed findings, and Markdown/JSON reports are in place. Additional
+adapters, evidence import/export, and findings deduplication remain planned.
 
 ## Repository and website identity
 

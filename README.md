@@ -48,11 +48,16 @@ built-in shell, file, and other tools remain disabled.
 
 ```text
 /engagement create <name>
+/engagement list
+/engagement use <id>
 /scope add example.com
 /scope exclude admin.example.com
 /scope list
 /policy check example.com http_headers
 /evidence list
+/finding add Missing strict transport security
+/findings list
+/report markdown
 ```
 
 When creating an engagement, enter `http_headers` among the authorized
@@ -60,6 +65,9 @@ activities to enable this check. Starting Riftor makes no security request.
 Each successful check saves the status and selected response headers to
 `.riftor/evidence.jsonl` in a SHA-256-linked record chain; `/evidence list`
 verifies the chain and displays recent records.
+Operators can record severity- and confidence-rated findings tied to evidence,
+track each as open, resolved, or accepted, and export a local Markdown or JSON
+report with `/report markdown` or `/report json`.
 
 This rewrite is at its bootstrap stage. The previous Python implementation is
 preserved in Git history; this branch contains the new standalone CLI.
