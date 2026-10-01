@@ -72,7 +72,10 @@ async function main(): Promise<void> {
 
   console.log("Riftor — standalone security assessment harness");
   console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP, DNS, and TLS checks are enabled.");
-  console.log(`Model: ${session.model ? `${session.model.provider}/${session.model.id}` : "not selected"}`);
+  const selectedModel = session.model && session.model.provider !== "unknown" && session.model.id !== "unknown"
+    ? `${session.model.provider}/${session.model.id}`
+    : "not selected";
+  console.log(`Model: ${selectedModel}`);
   console.log("Use /help for engagement, model, and scope commands. Type /exit to quit.\n");
 
   const unsubscribe = session.subscribe((event) => {
