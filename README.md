@@ -14,7 +14,18 @@ after engagement scope and policy enforcement are in place.
 
 ## Development
 
-Requirements: Node.js 22 or newer.
+Requirements: Node.js 22 or newer and credentials for a supported model provider.
+
+Install the current build directly from GitHub:
+
+```sh
+npm install --global github:amanverasia/riftor
+riftor
+```
+
+No separate Pi CLI is required.
+
+For local development:
 
 ```sh
 npm install

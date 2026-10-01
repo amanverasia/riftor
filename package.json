@@ -38,6 +38,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
+    "prepare": "npm run build",
     "prebuild": "node scripts/clean.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli.js"
