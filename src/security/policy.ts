@@ -15,6 +15,14 @@ export function evaluateAction(
 ): PolicyDecision {
   if (!engagement) return { outcome: "deny", reason: "No active engagement" };
 
+  if (!engagement.authorization || !Array.isArray(engagement.authorization.activities) ||
+    !engagement.authorization.activities.every((activity) => typeof activity === "string")) {
+    return { outcome: "deny", reason: "Authorized activity data is malformed" };
+  }
+  if (!engagement.scope || !Array.isArray(engagement.scope.include) || !Array.isArray(engagement.scope.exclude)) {
+    return { outcome: "deny", reason: "Engagement scope is malformed" };
+  }
+
   const startsAt = Date.parse(engagement.authorization.startsAt);
   const expiresAt = Date.parse(engagement.authorization.expiresAt);
   const now = (request.now ?? new Date()).getTime();
@@ -34,7 +42,7 @@ export function evaluateAction(
     return { outcome: "deny", reason: "Target is outside engagement scope" };
   }
 
-  if (!engagement.authorization.activities.includes(request.activity)) {
+  if (!engagement.authorization.activities.some((activity) => activity === request.activity)) {
     return { outcome: "deny", reason: `Activity is not authorized: ${request.activity}` };
   }
 

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { acquireFileLock } from "./file-lock.js";
 import type { Engagement } from "./types.js";
+import { normalizeScopeRule } from "../security/scope.js";
 
 interface StoredState {
   version: 2;
@@ -13,11 +15,13 @@ export class EngagementStore {
   readonly #directory: string;
   readonly #statePath: string;
   readonly #auditPath: string;
+  readonly #actionLockPath: string;
 
   constructor(workdir: string) {
     this.#directory = join(workdir, ".riftor");
     this.#statePath = join(this.#directory, "engagement.json");
     this.#auditPath = join(this.#directory, "audit.jsonl");
+    this.#actionLockPath = join(this.#directory, "action.lock");
   }
 
   async load(): Promise<Engagement | null> {
@@ -31,39 +35,61 @@ export class EngagementStore {
   }
 
   async activate(id: string): Promise<boolean> {
-    const state = await this.#readState();
-    if (!state.engagements.some((item) => item.id === id)) return false;
-    state.activeEngagementId = id;
-    await this.#writeState(state);
-    return true;
+    const release = await this.acquireActionLock();
+    try {
+      const state = await this.#readState();
+      if (!state.engagements.some((item) => item.id === id)) return false;
+      state.activeEngagementId = id;
+      await this.#writeState(state);
+      return true;
+    } finally {
+      await release();
+    }
   }
 
   async save(engagement: Engagement | null): Promise<void> {
-    const state = await this.#readState();
-    if (engagement === null) {
-      state.activeEngagementId = null;
-    } else {
-      const index = state.engagements.findIndex((item) => item.id === engagement.id);
-      if (index === -1) state.engagements.push(engagement);
-      else state.engagements[index] = engagement;
-      state.activeEngagementId = engagement.id;
+    const release = await this.acquireActionLock();
+    try {
+      const state = await this.#readState();
+      if (engagement === null) {
+        state.activeEngagementId = null;
+      } else {
+        const index = state.engagements.findIndex((item) => item.id === engagement.id);
+        if (index === -1) state.engagements.push(engagement);
+        else state.engagements[index] = engagement;
+        state.activeEngagementId = engagement.id;
+      }
+      await this.#writeState(state);
+    } finally {
+      await release();
     }
-    await this.#writeState(state);
+  }
+
+  acquireActionLock(): Promise<() => Promise<void>> {
+    return acquireFileLock(this.#actionLockPath);
   }
 
   async #readState(): Promise<StoredState> {
     try {
       const raw = await readFile(this.#statePath, "utf8");
-      const stored = JSON.parse(raw) as { version?: number; engagement?: Engagement | null; activeEngagementId?: string | null; engagements?: Engagement[] };
+      const stored: unknown = JSON.parse(raw);
+      if (!isRecord(stored)) throw new Error("Malformed engagement state");
       if (stored.version === 1 && "engagement" in stored) {
-        const engagements = stored.engagement ? [stored.engagement] : [];
-        return { version: 2, activeEngagementId: stored.engagement?.id ?? null, engagements };
+        const engagement = stored.engagement === null ? null : validateEngagement(stored.engagement);
+        const engagements = engagement ? [engagement] : [];
+        return { version: 2, activeEngagementId: engagement?.id ?? null, engagements };
       }
       if (stored.version !== 2 || !Array.isArray(stored.engagements) ||
-        (stored.activeEngagementId !== null && !stored.engagements.some((item) => item.id === stored.activeEngagementId))) {
+        !(stored.activeEngagementId === null || typeof stored.activeEngagementId === "string")) {
         throw new Error("Unsupported or malformed engagement state");
       }
-      return { version: 2, activeEngagementId: stored.activeEngagementId ?? null, engagements: stored.engagements };
+      const engagements = stored.engagements.map(validateEngagement);
+      const ids = engagements.map((item) => item.id);
+      if (new Set(ids).size !== ids.length) throw new Error("Duplicate engagement IDs in state");
+      if (stored.activeEngagementId !== null && !ids.includes(stored.activeEngagementId)) {
+        throw new Error("Active engagement ID does not exist in state");
+      }
+      return { version: 2, activeEngagementId: stored.activeEngagementId, engagements };
     } catch (error) {
       if (isMissing(error)) return { version: 2, activeEngagementId: null, engagements: [] };
       throw error;
@@ -90,6 +116,38 @@ export class EngagementStore {
     }
     await chmod(this.#auditPath, 0o600);
   }
+}
+
+function validateEngagement(value: unknown): Engagement {
+  if (!isRecord(value) || !isRecord(value.authorization) || !isRecord(value.scope)) {
+    throw new Error("Malformed engagement record");
+  }
+  const { id, name, createdAt, authorization, scope } = value;
+  const authStrings = [authorization.reference, authorization.authorizedBy, authorization.startsAt, authorization.expiresAt];
+  if (typeof id !== "string" || !id || typeof name !== "string" || !name || typeof createdAt !== "string" ||
+    !Number.isFinite(Date.parse(createdAt)) || !authStrings.every((item) => typeof item === "string" && item.length > 0) ||
+    !Number.isFinite(Date.parse(authorization.startsAt as string)) || !Number.isFinite(Date.parse(authorization.expiresAt as string)) ||
+    Date.parse(authorization.expiresAt as string) <= Date.parse(authorization.startsAt as string) ||
+    !Array.isArray(authorization.activities) || authorization.activities.length === 0 || authorization.activities.length > 32 ||
+    !authorization.activities.every((item) => typeof item === "string" && item.length > 0) ||
+    !Array.isArray(scope.include) || !Array.isArray(scope.exclude) || scope.include.length > 10_000 || scope.exclude.length > 10_000 ||
+    !scope.include.every(validScopeRule) || !scope.exclude.every(validScopeRule)) {
+    throw new Error(`Malformed engagement record: ${String(id ?? "unknown")}`);
+  }
+  return value as unknown as Engagement;
+}
+
+function validScopeRule(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  try {
+    return normalizeScopeRule(value) === value;
+  } catch {
+    return false;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isMissing(error: unknown): boolean {

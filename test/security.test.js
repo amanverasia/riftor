@@ -7,6 +7,7 @@ import { EvidenceStore } from "../dist/engagement/evidence-store.js";
 import { EngagementStore } from "../dist/engagement/store.js";
 import { createHttpHeadersTool } from "../dist/security/http-headers.js";
 import { createDnsLookupTool } from "../dist/security/dns-lookup.js";
+import { createTlsCertificateTool } from "../dist/security/tls-certificate.js";
 import { evaluateAction } from "../dist/security/policy.js";
 import { isTargetInScope } from "../dist/security/scope.js";
 
@@ -77,6 +78,47 @@ test("engagement storage migrates the original format and preserves multiple eng
   });
 });
 
+test("engagement storage rejects malformed persisted authorization and inconsistent active IDs", async () => {
+  await withTempDir(async (directory) => {
+    const stateDirectory = join(directory, ".riftor");
+    const statePath = join(stateDirectory, "engagement.json");
+    await mkdir(stateDirectory, { recursive: true });
+    const store = new EngagementStore(directory);
+
+    // A string looks array-like in JavaScript and can make String#includes grant
+    // an activity by substring. Persisted records must keep activities as an array.
+    const malformed = engagement();
+    malformed.authorization.activities = "prefix-http_headers-suffix";
+    await writeFile(statePath, JSON.stringify({
+      version: 2,
+      activeEngagementId: malformed.id,
+      engagements: [malformed],
+    }));
+    await assert.rejects(store.load(), /Malformed engagement record/);
+
+    // A v2 state must not point at an engagement absent from its records.
+    const valid = engagement();
+    await writeFile(statePath, JSON.stringify({
+      version: 2,
+      activeEngagementId: "missing-engagement",
+      engagements: [valid],
+    }));
+    await assert.rejects(store.load(), /Active engagement ID does not exist/);
+  });
+});
+
+test("a malformed activity string cannot authorize an activity by substring", () => {
+  const malformed = engagement();
+  malformed.authorization.activities = "prefix-http_headers-suffix";
+  const decision = evaluateAction(malformed, {
+    target: "example.com",
+    activity: "http_headers",
+    humanApproved: true,
+  });
+  assert.equal(decision.outcome, "deny");
+  assert.match(decision.reason, /activity/i);
+});
+
 test("evidence records form a verifiable hash chain and reject edits", async () => {
   await withTempDir(async (directory) => {
     const store = new EvidenceStore(directory);
@@ -125,7 +167,37 @@ test("the HTTP tool refuses non-interactive approval before making a request", a
     await store.save(engagement({ scope: { include: ["203.0.113.8"], exclude: [] } }));
     const tool = createHttpHeadersTool(store, evidenceStore, async () => false);
     const result = await tool.execute("call-2", { target: "203.0.113.8" }, undefined, undefined, {});
-    assert.match(result.content[0].text, /operator approval was not granted/);
+    assert.match(result.content[0].text, /operator approval was not granted/i);
+    assert.deepEqual(await evidenceStore.list(), []);
+  });
+});
+
+test("the HTTP tool does not connect if authorization expires during target resolution", async () => {
+  await withTempDir(async (directory) => {
+    const store = new EngagementStore(directory);
+    const evidenceStore = new EvidenceStore(directory);
+    const active = engagement({
+      authorization: { ...engagement().authorization, expiresAt: new Date(Date.now() + 200).toISOString() },
+    });
+    await store.save(active);
+    let connectionAttempts = 0;
+    const tool = createHttpHeadersTool(store, evidenceStore, async () => true, {
+      createResolver: () => ({
+        resolve4: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return ["93.184.216.34"];
+        },
+        resolve6: async () => [],
+        cancel() {},
+      }),
+      sendHeadRequest: async () => {
+        connectionAttempts += 1;
+        return { status: 200, statusText: "OK", headers: {} };
+      },
+    });
+    const result = await tool.execute("expired-during-resolution", { target: "example.com" }, undefined, undefined, {});
+    assert.match(result.content[0].text, /authorization has expired/i);
+    assert.equal(connectionAttempts, 0);
     assert.deepEqual(await evidenceStore.list(), []);
   });
 });
@@ -141,6 +213,24 @@ test("the DNS tool refuses an out-of-scope name before asking for approval", asy
       return true;
     });
     const result = await tool.execute("call-3", { target: "outside.example.net" }, undefined, undefined, {});
+    assert.match(result.content[0].text, /Denied: Target is outside engagement scope/);
+    assert.equal(approvalPrompts, 0);
+    assert.deepEqual(await evidenceStore.list(), []);
+  });
+});
+
+test("the TLS certificate tool refuses an out-of-scope hostname before approval or network access", async () => {
+  await withTempDir(async (directory) => {
+    const store = new EngagementStore(directory);
+    const evidenceStore = new EvidenceStore(directory);
+    const active = engagement({ authorization: { ...engagement().authorization, activities: ["tls_certificate"] } });
+    await store.save(active);
+    let approvalPrompts = 0;
+    const tool = createTlsCertificateTool(store, evidenceStore, async () => {
+      approvalPrompts += 1;
+      return true;
+    });
+    const result = await tool.execute("call-tls-out-of-scope", { target: "outside.example.net" }, undefined, undefined, {});
     assert.match(result.content[0].text, /Denied: Target is outside engagement scope/);
     assert.equal(approvalPrompts, 0);
     assert.deepEqual(await evidenceStore.list(), []);

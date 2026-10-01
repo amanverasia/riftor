@@ -58,9 +58,9 @@ function renderMarkdown(data: ReportData): string {
       `- Target: ${escapeInline(finding.target)}`,
       `- Evidence IDs: ${finding.evidenceIds.map(escapeInline).join(", ")}`,
       "",
-      finding.description,
+      escapeInline(finding.description),
       "",
-      `**Remediation:** ${finding.remediation}`,
+      `**Remediation:** ${escapeInline(finding.remediation)}`,
       "",
     );
   }
@@ -71,13 +71,30 @@ function renderMarkdown(data: ReportData): string {
     const activityDetails = record.activity === "http_headers"
       ? [
           `- Request: ${escapeInline(record.request.method)} ${escapeInline(record.request.url)}`,
+          `- Connected address: ${escapeInline(record.request.connectedAddress ?? "Not recorded by this evidence version")}`,
+          `- Resolved addresses: ${(record.request.resolvedAddresses ?? []).map(escapeInline).join(", ") || "Not recorded by this evidence version"}`,
           `- Response: HTTP ${record.response.status} ${escapeInline(record.response.statusText)}`,
           ...Object.entries(record.response.headers).map(([name, value]) => `- ${escapeInline(name)}: ${escapeInline(value)}`),
         ]
-      : [
+      : record.activity === "dns_lookup"
+      ? [
           `- DNS query types: ${record.query.types.join(", ")}`,
           `- A records: ${record.response.A.map(escapeInline).join(", ") || "None"}`,
           `- AAAA records: ${record.response.AAAA.map(escapeInline).join(", ") || "None"}`,
+        ]
+      : [
+          `- TLS port: ${record.request.port}`,
+          `- Connected address: ${escapeInline(record.request.connectedAddress)}`,
+          `- Certificate present: ${record.response.certificatePresent}`,
+          `- Authorized by local trust store: ${record.response.authorized}`,
+          `- Protocol: ${escapeInline(record.response.protocol ?? "Unknown")}`,
+          `- Subject: ${record.response.subject ? Object.entries(record.response.subject).map(([key, value]) => `${escapeInline(key)}=${escapeInline(value)}`).join(", ") : "Unavailable"}`,
+          `- Issuer: ${record.response.issuer ? Object.entries(record.response.issuer).map(([key, value]) => `${escapeInline(key)}=${escapeInline(value)}`).join(", ") : "Unavailable"}`,
+          `- Validity: ${escapeInline(record.response.validFrom ?? "Unknown")} to ${escapeInline(record.response.validTo ?? "Unknown")}`,
+          `- SHA-256 fingerprint: ${escapeInline(record.response.fingerprint256 ?? "Unavailable")}`,
+          `- Subject alternative names: ${record.response.subjectAltNames.map(escapeInline).join(", ") || "None"}`,
+          ...(record.response.authorizationError ? [`- Trust error: ${escapeInline(record.response.authorizationError)}`] : []),
+          ...(record.response.error ? [`- Handshake error: ${escapeInline(record.response.error)}`] : []),
         ];
     lines.push(
       `### ${escapeInline(record.activity)} — ${escapeInline(record.target)}`,

@@ -86,13 +86,14 @@ must not inherit arbitrary shell access merely because Pi can run shell tools.
   activity set; deny by default without an interactive approver.
 - Add bounded concurrency, request rate, timeout, and cancellation controls.
 
-Progress: Pi's built-in tools are suppressed. Riftor exposes two adapters:
-HTTP `HEAD` and DNS A/AAAA lookup. Each checks the active engagement, target
-scope, its exact authorized activity, and a fresh operator confirmation. HTTP
-rejects custom ports and redirects. Both record decisions and outcomes in the
-local audit log and write successful observations to the SHA-256-linked
-evidence chain, inspectable with `/evidence list`. Broader lifecycle hooks,
-centralized adapter registration, and shared concurrency/rate controls remain
+Progress: Pi's built-in tools are suppressed. Riftor exposes HTTP `HEAD`, DNS
+A/AAAA lookup, and TLS leaf-certificate inspection. Each checks the active
+engagement, target scope, its exact authorized activity, and fresh operator
+confirmation. HTTP rejects custom ports and redirects. HTTP and TLS pin their
+connections to validated IPs; private addresses require explicit IP/CIDR scope.
+All three record outcomes in the local audit log and successful observations in
+the SHA-256-linked evidence chain, inspectable with `/evidence list`. Broader
+lifecycle hooks, centralized adapter registration, and rate controls remain
 planned.
 
 Engagement state now retains multiple saved authorizations and lets the operator
@@ -131,13 +132,13 @@ assessment adapters remain planned.
 
 ## Current implementation status
 
-The standalone CLI, local engagement record, authorization expiry checks,
+The standalone CLI, local engagement records, authorization expiry checks,
 host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
-records are in place. Two policy-gated adapters for HTTP headers and DNS lookup
-are wired into Pi; the Pi shell, file, and default tools stay disabled. Hashed
-evidence capture, operator-reviewed findings, and Markdown/JSON reports are in
-place. Additional adapters, evidence import/export, and findings deduplication
-remain planned.
+records are in place. Three policy-gated adapters for HTTP headers, DNS lookup,
+and TLS certificate inspection are wired into Pi; the Pi shell, file, and default
+tools stay disabled. Hashed evidence capture, operator-reviewed findings, and
+Markdown/JSON reports are in place. Additional adapters, evidence import/export,
+and findings deduplication remain planned.
 
 ## Repository and website identity
 

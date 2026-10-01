@@ -14,8 +14,23 @@ import { evaluateAction } from "./security/policy.js";
 import { normalizeScopeRule, normalizeTarget } from "./security/scope.js";
 import { createHttpHeadersTool } from "./security/http-headers.js";
 import { createDnsLookupTool } from "./security/dns-lookup.js";
+import { createTlsCertificateTool } from "./security/tls-certificate.js";
 
 async function main(): Promise<void> {
+  if (process.argv.slice(2).some((argument) => argument === "--help" || argument === "-h")) {
+    console.log([
+      "Riftor — standalone security assessment harness",
+      "",
+      "Usage: riftor [--help]",
+      "",
+      "Run Riftor interactively. It embeds the Pi agent runtime; no separate Pi CLI is needed.",
+      "All network checks require a live engagement, an authorized activity, an in-scope target, and per-action operator approval.",
+      "",
+      "Start with /help for engagement, scope, evidence, finding, and report commands.",
+      "Network activities: http_headers, dns_lookup, tls_certificate",
+    ].join("\n"));
+    return;
+  }
   const store = new EngagementStore(process.cwd());
   const evidenceStore = new EvidenceStore(process.cwd());
   const findingStore = new FindingStore(process.cwd());
@@ -27,12 +42,13 @@ async function main(): Promise<void> {
   };
   const httpHeadersTool = createHttpHeadersTool(store, evidenceStore, requestApproval);
   const dnsLookupTool = createDnsLookupTool(store, evidenceStore, requestApproval);
+  const tlsCertificateTool = createTlsCertificateTool(store, evidenceStore, requestApproval);
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   try {
     ({ session } = await createAgentSession({
       cwd: process.cwd(),
-      tools: [httpHeadersTool.name, dnsLookupTool.name],
-      customTools: [httpHeadersTool, dnsLookupTool],
+      tools: [httpHeadersTool.name, dnsLookupTool.name, tlsCertificateTool.name],
+      customTools: [httpHeadersTool, dnsLookupTool, tlsCertificateTool],
     }));
   } catch (error) {
     terminal.close();
@@ -40,7 +56,7 @@ async function main(): Promise<void> {
   }
 
   console.log("Riftor — standalone security assessment harness");
-  console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP headers and DNS checks are enabled.");
+  console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP, DNS, and TLS checks are enabled.");
   console.log("Use /help for engagement and scope commands. Type /exit to quit.\n");
 
   const unsubscribe = session.subscribe((event) => {
@@ -82,7 +98,7 @@ async function handleLocalCommand(
       "Local commands:",
       "  /engagement                 Show the active engagement",
       "  /engagement create <name>   Record authorization and create one",
-      "                              Activities include http_headers and dns_lookup for the available checks",
+      "                              Activities: http_headers, dns_lookup, tls_certificate",
       "  /engagement list            List saved engagements",
       "  /engagement use <id>        Select an engagement without deleting others",
       "  /scope list                 Show included and excluded targets",
@@ -90,7 +106,7 @@ async function handleLocalCommand(
       "  /scope exclude <target>     Add an explicit exclusion",
       "  /scope remove <target>      Remove a scope rule",
       "  /policy check <target> <activity>  Preview the policy decision",
-      "  /evidence list              Inspect captured HTTP check evidence",
+      "  /evidence list              Verify and inspect captured evidence",
       "  /finding add <title>        Record a reviewed finding linked to evidence",
       "  /finding status <id> <state>  Update a finding (open/resolved/accepted)",
       "  /findings list              List findings for the active engagement",
@@ -163,7 +179,11 @@ async function handleLocalCommand(
     for (const record of records.slice(-20).reverse()) {
       const responseSummary = record.activity === "http_headers"
         ? `HTTP ${record.response.status} ${record.response.statusText}`
-        : `A ${record.response.A.length} / AAAA ${record.response.AAAA.length}`;
+        : record.activity === "dns_lookup"
+          ? `A ${record.response.A.length} / AAAA ${record.response.AAAA.length}`
+          : record.response.certificatePresent
+            ? `TLS ${record.response.protocol ?? "unknown"} / ${record.response.authorized ? "trusted" : "certificate warning"}`
+            : `TLS connection error`;
       console.log([
         `${record.id}  ${record.capturedAt}  ${record.activity}  ${record.target}`,
         `  ${responseSummary}`,

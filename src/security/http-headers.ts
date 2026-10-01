@@ -1,10 +1,24 @@
 import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { checkServerIdentity } from "node:tls";
 import type { EngagementStore } from "../engagement/store.js";
 import type { EvidenceStore } from "../engagement/evidence-store.js";
-import type { Engagement } from "../engagement/types.js";
-import { evaluateAction } from "./policy.js";
+import { authorizeAction } from "./action-gateway.js";
 import { normalizeTarget } from "./scope.js";
+import { resolveScopedAddresses, type DnsAddressResolver } from "./target-resolution.js";
+
+interface HttpHeadersObservation {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+}
+
+interface HttpHeadersDependencies {
+  createResolver?: () => DnsAddressResolver;
+  sendHeadRequest?: typeof sendHeadRequest;
+}
 
 const parameters = Type.Object({
   target: Type.String({ description: "An authorized hostname or IP address, optionally with http:// or https://" }),
@@ -14,6 +28,7 @@ export function createHttpHeadersTool(
   store: EngagementStore,
   evidenceStore: EvidenceStore,
   approve: (message: string) => Promise<boolean>,
+  dependencies: HttpHeadersDependencies = {},
 ) {
   return defineTool({
     name: "riftor_http_headers",
@@ -43,77 +58,51 @@ export function createHttpHeadersTool(
         return result(error instanceof Error ? error.message : "Invalid target");
       }
 
-      const engagement = await store.load();
-      const request = { target: host, activity: "http_headers", approvalAvailable: true };
-      const policy = evaluateAction(engagement, request);
-      if (policy.outcome === "deny") {
-        await audit(store, "http_headers_denied", engagement, host, policy.reason);
-        return result(`Denied: ${policy.reason}`);
-      }
-
-      try {
-        await evidenceStore.list();
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : "Evidence integrity check failed";
-        await audit(store, "http_headers_denied", engagement, host, `Evidence integrity check failed: ${reason}`);
-        return result(`Denied: existing evidence could not be verified (${reason})`);
-      }
-
-      const approved = await approve(
-        `Engagement “${engagement?.name}” (${engagement?.id}) permits activity http_headers. Authorize one HEAD request to ${url.origin}/? Type yes to approve.`,
-      ).catch(() => false);
-      if (!approved) {
-        await audit(store, "http_headers_denied", engagement, host, "Operator declined or approval unavailable");
-        return result("Denied: operator approval was not granted");
-      }
-
-      const currentEngagement = await store.load();
-      if (!engagement || !currentEngagement || currentEngagement.id !== engagement.id) {
-        await audit(store, "http_headers_denied", currentEngagement, host, "Active engagement changed during approval");
-        return result("Denied: active engagement changed during approval; review the current engagement and retry");
-      }
-      const finalPolicy = evaluateAction(currentEngagement, { ...request, humanApproved: true });
-      if (finalPolicy.outcome !== "allow") {
-        await audit(store, "http_headers_denied", currentEngagement, host, finalPolicy.reason);
-        return result(`Denied: ${finalPolicy.reason}`);
-      }
-
-      if (signal?.aborted) return result("Request cancelled before execution");
-      await store.appendAudit({
-        kind: "http_headers_started",
-        engagementId: currentEngagement.id,
+      const authorization = await authorizeAction({
+        kind: "http_headers",
+        activity: "http_headers",
         target: host,
-        url: url.origin,
-        method: "HEAD",
-        approvedBy: "operator",
+        signal,
+        approvalMessage: `Authorize one HEAD request to ${url.origin}/ under activity http_headers? Type yes to approve.`,
+        auditDetails: { url: url.href, method: "HEAD" },
+      }, {
+        engagementStore: store,
+        evidenceStore,
+        approve: (message) => approve(message),
       });
+      if (!authorization.allowed) return result(`Denied: ${authorization.reason}`);
+      const currentEngagement = authorization.engagement;
 
-      let response: Response;
       try {
-        response = await fetch(url, {
-          method: "HEAD",
-          redirect: "manual",
-          signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(8_000)]),
-          headers: { "user-agent": "Riftor-Security-Assessment/1.0" },
-        });
+      let resolvedAddresses: string[];
+      try {
+        resolvedAddresses = await resolveScopedAddresses(host, currentEngagement, dependencies.createResolver);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Target address validation failed";
+        await store.appendAudit({ kind: "http_headers_denied", engagementId: currentEngagement.id, target: host, reason: message.slice(0, 300) });
+        return result(`Denied: ${message}`);
+      }
+      const connectedAddress = resolvedAddresses[0]!;
+
+      const recheckReason = await authorization.recheck();
+      if (recheckReason) return result(`Denied: ${recheckReason}`);
+
+      let response: HttpHeadersObservation;
+      try {
+        response = await (dependencies.sendHeadRequest ?? sendHeadRequest)(url, host, connectedAddress, signal);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Request failed";
         await store.appendAudit({ kind: "http_headers_failed", engagementId: currentEngagement.id, target: host, reason: message.slice(0, 300) });
         return result(`Request failed: ${message}`);
       }
 
-      const headers = ["server", "content-type", "content-length", "strict-transport-security", "x-content-type-options", "content-security-policy"]
-        .reduce<Record<string, string>>((collected, name) => {
-          const value = response.headers.get(name);
-          if (value !== null) collected[name] = value.slice(0, 500);
-          return collected;
-        }, {});
+      const headers = response.headers;
       try {
         const evidence = await evidenceStore.append({
           engagementId: currentEngagement.id,
           target: host,
           activity: "http_headers",
-          request: { method: "HEAD", url: url.href },
+          request: { method: "HEAD", url: url.href, resolvedAddresses, connectedAddress },
           response: { status: response.status, statusText: response.statusText, headers },
         });
         await store.appendAudit({
@@ -142,18 +131,75 @@ export function createHttpHeadersTool(
         });
         return result(`HTTP ${response.status}, but evidence could not be saved: ${message}`);
       }
+      } finally {
+        await authorization.release();
+      }
     },
   });
 }
 
-async function audit(
-  store: EngagementStore,
-  kind: string,
-  engagement: Engagement | null,
-  target: string,
-  reason: string,
-): Promise<void> {
-  await store.appendAudit({ kind, engagementId: engagement?.id, target, reason });
+export function sendHeadRequest(
+  url: URL,
+  hostname: string,
+  address: string,
+  signal?: AbortSignal,
+): Promise<{ status: number; statusText: string; headers: Record<string, string> }> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("Request cancelled before connection"));
+      return;
+    }
+
+    const secure = url.protocol === "https:";
+    const transport = secure ? httpsRequest : httpRequest;
+    const request = transport({
+      hostname: address,
+      port: Number(url.port || (secure ? 443 : 80)),
+      path: `${url.pathname}${url.search}`,
+      method: "HEAD",
+      maxHeaderSize: 16 * 1024,
+      headers: {
+        host: url.host,
+        "user-agent": "Riftor-Security-Assessment/1.0",
+      },
+      ...(secure && !isIpAddress(hostname) ? { servername: hostname } : {}),
+      ...(secure ? { checkServerIdentity: (_name: string, certificate: Parameters<typeof checkServerIdentity>[1]) => checkServerIdentity(hostname, certificate) } : {}),
+    });
+    const timer = setTimeout(() => request.destroy(new Error("HTTP request timed out")), 8_000);
+    const cancel = () => request.destroy(new Error("HTTP request cancelled"));
+    signal?.addEventListener("abort", cancel, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+    };
+
+    request.once("error", (error) => {
+      cleanup();
+      reject(error);
+    });
+    request.once("response", (incoming) => {
+      const headers = ["server", "content-type", "content-length", "strict-transport-security", "x-content-type-options", "content-security-policy"]
+        .reduce<Record<string, string>>((collected, name) => {
+          const value = incoming.headers[name];
+          if (typeof value === "string") collected[name] = value.slice(0, 500);
+          else if (Array.isArray(value)) collected[name] = value.join(", ").slice(0, 500);
+          return collected;
+        }, {});
+      const observation = {
+        status: incoming.statusCode ?? 0,
+        statusText: incoming.statusMessage ?? "",
+        headers,
+      };
+      cleanup();
+      incoming.destroy();
+      resolve(observation);
+    });
+    request.end();
+  });
+}
+
+function isIpAddress(value: string): boolean {
+  return /^[\d.]+$/.test(value) || value.includes(":");
 }
 
 function result(text: string) {

@@ -4,18 +4,23 @@ import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { EngagementStore } from "../engagement/store.js";
 import type { EvidenceStore } from "../engagement/evidence-store.js";
-import type { Engagement } from "../engagement/types.js";
-import { evaluateAction } from "./policy.js";
+import { authorizeAction } from "./action-gateway.js";
 import { normalizeTarget } from "./scope.js";
+import type { DnsAddressResolver } from "./target-resolution.js";
 
 const parameters = Type.Object({
   target: Type.String({ description: "An authorized domain name to resolve" }),
 });
 
+interface DnsLookupDependencies {
+  createResolver?: () => DnsAddressResolver;
+}
+
 export function createDnsLookupTool(
   store: EngagementStore,
   evidenceStore: EvidenceStore,
   approve: (message: string) => Promise<boolean>,
+  dependencies: DnsLookupDependencies = {},
 ) {
   return defineTool({
     name: "riftor_dns_lookup",
@@ -34,51 +39,25 @@ export function createDnsLookupTool(
         return result(error instanceof Error ? error.message : "Invalid domain");
       }
 
-      const engagement = await store.load();
-      const request = { target: host, activity: "dns_lookup", approvalAvailable: true };
-      const policy = evaluateAction(engagement, request);
-      if (policy.outcome === "deny") {
-        await audit(store, "dns_lookup_denied", engagement, host, policy.reason);
-        return result(`Denied: ${policy.reason}`);
-      }
+      const authorization = await authorizeAction({
+        kind: "dns_lookup",
+        activity: "dns_lookup",
+        target: host,
+        signal,
+        approvalMessage: `Query A and AAAA records for ${host} under activity dns_lookup? Type yes to approve.`,
+        auditDetails: { queryTypes: ["A", "AAAA"] },
+      }, {
+        engagementStore: store,
+        evidenceStore,
+        approve: (message) => approve(message),
+      });
+      if (!authorization.allowed) return result(`Denied: ${authorization.reason}`);
+      const currentEngagement = authorization.engagement;
 
       try {
-        await evidenceStore.list();
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : "Evidence integrity check failed";
-        await audit(store, "dns_lookup_denied", engagement, host, `Evidence integrity check failed: ${reason}`);
-        return result(`Denied: existing evidence could not be verified (${reason})`);
-      }
-
-      const approved = await approve(
-        `Engagement “${engagement?.name}” (${engagement?.id}) permits activity dns_lookup. Query A and AAAA records for ${host}? Type yes to approve.`,
-      ).catch(() => false);
-      if (!approved) {
-        await audit(store, "dns_lookup_denied", engagement, host, "Operator declined or approval unavailable");
-        return result("Denied: operator approval was not granted");
-      }
-
-      const currentEngagement = await store.load();
-      if (!engagement || !currentEngagement || currentEngagement.id !== engagement.id) {
-        await audit(store, "dns_lookup_denied", currentEngagement, host, "Active engagement changed during approval");
-        return result("Denied: active engagement changed during approval; review the current engagement and retry");
-      }
-      const finalPolicy = evaluateAction(currentEngagement, { ...request, humanApproved: true });
-      if (finalPolicy.outcome !== "allow") {
-        await audit(store, "dns_lookup_denied", currentEngagement, host, finalPolicy.reason);
-        return result(`Denied: ${finalPolicy.reason}`);
-      }
-      if (signal?.aborted) return result("DNS lookup cancelled before execution");
-
-      await store.appendAudit({
-        kind: "dns_lookup_started",
-        engagementId: currentEngagement.id,
-        target: host,
-        queryTypes: ["A", "AAAA"],
-        approvedBy: "operator",
-      });
-
-      const resolver = new Resolver({ timeout: 5_000, tries: 1 });
+      const recheckReason = await authorization.recheck();
+      if (recheckReason) return result(`Denied: ${recheckReason}`);
+      const resolver = dependencies.createResolver?.() ?? new Resolver({ timeout: 5_000, tries: 1 });
       const cancel = () => resolver.cancel();
       signal?.addEventListener("abort", cancel, { once: true });
       let addresses: { A: string[]; AAAA: string[] };
@@ -129,6 +108,9 @@ export function createDnsLookupTool(
         });
         return result(`DNS lookup completed, but evidence could not be saved: ${reason}`);
       }
+      } finally {
+        await authorization.release();
+      }
     },
   });
 }
@@ -142,10 +124,6 @@ async function resolveType(resolve: () => Promise<string[]>): Promise<string[]> 
     }
     throw error;
   }
-}
-
-async function audit(store: EngagementStore, kind: string, engagement: Engagement | null, target: string, reason: string): Promise<void> {
-  await store.appendAudit({ kind, engagementId: engagement?.id, target, reason });
 }
 
 function result(text: string) {
