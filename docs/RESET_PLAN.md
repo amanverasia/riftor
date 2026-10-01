@@ -90,8 +90,10 @@ Progress: Pi's built-in tools are suppressed and the only enabled tool is a
 Riftor-owned HTTP `HEAD` adapter. It checks the active engagement, exact host
 scope, `http_headers` activity, and a fresh operator confirmation; it rejects
 custom ports, does not follow redirects, and records decisions and outcomes in
-the local audit log. Broader lifecycle hooks, centralized adapter registration,
-and shared concurrency/rate controls remain planned.
+the local audit log. Successful responses are also written as SHA-256-linked
+evidence records and can be inspected with `/evidence list`. Broader lifecycle
+hooks, centralized adapter registration, and shared concurrency/rate controls
+remain planned.
 
 ### 3. Evidence and assessment workflow
 
@@ -122,8 +124,9 @@ and shared concurrency/rate controls remain planned.
 The standalone CLI, local engagement record, authorization expiry checks,
 host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
 records are in place. One policy-gated HTTP headers adapter is wired into Pi;
-the Pi shell, file, and default tools stay disabled. Evidence capture, findings,
-reporting, and additional adapters remain planned.
+the Pi shell, file, and default tools stay disabled. Basic hashed evidence
+capture is in place; evidence export, findings, reporting, and additional
+adapters remain planned.
 
 ## Repository and website identity
 

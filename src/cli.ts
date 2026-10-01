@@ -4,6 +4,7 @@ import { createAgentSession } from "@earendil-works/pi-coding-agent";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { randomUUID } from "node:crypto";
+import { EvidenceStore } from "./engagement/evidence-store.js";
 import { EngagementStore } from "./engagement/store.js";
 import type { Engagement } from "./engagement/types.js";
 import { evaluateAction } from "./security/policy.js";
@@ -12,8 +13,9 @@ import { createHttpHeadersTool } from "./security/http-headers.js";
 
 async function main(): Promise<void> {
   const store = new EngagementStore(process.cwd());
+  const evidenceStore = new EvidenceStore(process.cwd());
   const terminal = createInterface({ input: stdin, output: stdout });
-  const httpHeadersTool = createHttpHeadersTool(store, async (message) => {
+  const httpHeadersTool = createHttpHeadersTool(store, evidenceStore, async (message) => {
     if (!stdin.isTTY || !stdout.isTTY) return false;
     const answer = await terminal.question(`${message} [yes/no] `);
     return answer.trim().toLowerCase() === "yes";
@@ -49,7 +51,7 @@ async function main(): Promise<void> {
       const input = prompt.trim();
       if (input === "/exit") break;
       if (!input) continue;
-      if (await handleLocalCommand(input, terminal, store)) continue;
+      if (await handleLocalCommand(input, terminal, store, evidenceStore)) continue;
 
       await session.prompt(prompt);
       process.stdout.write("\n\n");
@@ -65,6 +67,7 @@ async function handleLocalCommand(
   input: string,
   terminal: ReturnType<typeof createInterface>,
   store: EngagementStore,
+  evidenceStore: EvidenceStore,
 ): Promise<boolean> {
   if (input === "/help") {
     console.log([
@@ -77,6 +80,7 @@ async function handleLocalCommand(
       "  /scope exclude <target>     Add an explicit exclusion",
       "  /scope remove <target>      Remove a scope rule",
       "  /policy check <target> <activity>  Preview the policy decision",
+      "  /evidence list              Inspect captured HTTP check evidence",
       "  /exit                       Quit",
     ].join("\n"));
     return true;
@@ -100,6 +104,29 @@ async function handleLocalCommand(
 
   if (input === "/scope" || input.startsWith("/scope ")) {
     await handleScopeCommand(input, store);
+    return true;
+  }
+
+  if (input === "/evidence" || input === "/evidence list") {
+    let records;
+    try {
+      records = await evidenceStore.list();
+    } catch (error) {
+      console.log(`Evidence could not be read: ${error instanceof Error ? error.message : "integrity check failed"}`);
+      return true;
+    }
+    if (!records.length) {
+      console.log("No evidence captured yet.");
+      return true;
+    }
+    for (const record of records.slice(-20).reverse()) {
+      console.log([
+        `${record.id}  ${record.capturedAt}  ${record.activity}  ${record.target}`,
+        `  HTTP ${record.response.status} ${record.response.statusText}`,
+        `  SHA-256 ${record.sha256}`,
+      ].join("\n"));
+    }
+    if (records.length > 20) console.log(`Showing the latest 20 of ${records.length} records.`);
     return true;
   }
 
