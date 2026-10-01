@@ -1,0 +1,45 @@
+{
+  "name": "riftor",
+  "version": "5.0.0-dev.0",
+  "description": "Pi-powered cybersecurity assessment harness",
+  "author": "amanverasia",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amanverasia/riftor.git"
+  },
+  "homepage": "https://riftor.dev",
+  "bugs": {
+    "url": "https://github.com/amanverasia/riftor/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "riftor": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "cybersecurity",
+    "security-assessment",
+    "pentest"
+  ],
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.2"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "prebuild": "node scripts/clean.mjs",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js"
+  }
+}

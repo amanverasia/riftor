@@ -1,49 +1,21 @@
-name: ci
+name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-  # Lets release.yml gate publishing on the full suite (lint/typecheck/test/smoke
-  # + docker) before it builds and pushes to PyPI.
-  workflow_call:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v7
-      - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          enable-cache: true
-      - name: Sync (locked)
-        run: uv sync --frozen --extra dev --python ${{ matrix.python-version }}
-      - name: Lint
-        run: uv run ruff check riftor dev tests
-      - name: Type check
-        run: uv run pyright riftor
-      - name: Unit tests (pytest)
-        run: uv run pytest
-      - name: Smoke (headless TUI integration)
-        run: uv run python dev/smoke.py
-
-  docker:
-    # Builds the image and runs it once, so Dockerfile changes (and Dependabot
-    # base-image bumps) are actually verified — `test` runs on the runner's
-    # Python and never exercises the container.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Build image
-        run: docker build -t riftor:ci .
-      - name: Smoke (riftor runs in the container)
-        run: docker run --rm riftor:ci --version
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build

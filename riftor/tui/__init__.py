@@ -1,1 +1,0 @@
-"""riftor terminal UI (Textual)."""

@@ -1,35 +1,23 @@
-# Python
+node_modules/
+dist/
+coverage/
+.venv/
 __pycache__/
 *.py[cod]
-*.egg-info/
-.eggs/
-build/
-dist/
-
-# uv / venv
-.venv/
-# uv.lock is committed for reproducible installs + CI caching
-
-# riftor local state
+.pytest_cache/
+.ruff_cache/
+.superpowers/
+docs/superpowers/
+dev/
+riftor/
+tests/
+.env
+.env.*
+!.env.example
 .riftor/
 *.sqlite
 *.sqlite3
-engagements/
-reports/
-
-# OS / editor
 .DS_Store
 *.swp
 .idea/
 .vscode/
-
-# brainstorming visual companion scratch
-.superpowers/
-
-# internal AI planning/spec docs — kept locally, not shipped or tracked
-docs/superpowers/
-.env
-
-# local UI-capture scratch outputs
-dev/ui_capture.py
-dev/ui-captures/
