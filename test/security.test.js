@@ -6,6 +6,7 @@ import test from "node:test";
 import { EvidenceStore } from "../dist/engagement/evidence-store.js";
 import { EngagementStore } from "../dist/engagement/store.js";
 import { createHttpHeadersTool } from "../dist/security/http-headers.js";
+import { createDnsLookupTool } from "../dist/security/dns-lookup.js";
 import { evaluateAction } from "../dist/security/policy.js";
 import { isTargetInScope } from "../dist/security/scope.js";
 
@@ -125,6 +126,23 @@ test("the HTTP tool refuses non-interactive approval before making a request", a
     const tool = createHttpHeadersTool(store, evidenceStore, async () => false);
     const result = await tool.execute("call-2", { target: "203.0.113.8" }, undefined, undefined, {});
     assert.match(result.content[0].text, /operator approval was not granted/);
+    assert.deepEqual(await evidenceStore.list(), []);
+  });
+});
+
+test("the DNS tool refuses an out-of-scope name before asking for approval", async () => {
+  await withTempDir(async (directory) => {
+    const store = new EngagementStore(directory);
+    const evidenceStore = new EvidenceStore(directory);
+    await store.save(engagement({ authorization: { ...engagement().authorization, activities: ["dns_lookup"] } }));
+    let approvalPrompts = 0;
+    const tool = createDnsLookupTool(store, evidenceStore, async () => {
+      approvalPrompts += 1;
+      return true;
+    });
+    const result = await tool.execute("call-3", { target: "outside.example.net" }, undefined, undefined, {});
+    assert.match(result.content[0].text, /Denied: Target is outside engagement scope/);
+    assert.equal(approvalPrompts, 0);
     assert.deepEqual(await evidenceStore.list(), []);
   });
 });

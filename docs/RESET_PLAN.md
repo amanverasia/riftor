@@ -86,14 +86,14 @@ must not inherit arbitrary shell access merely because Pi can run shell tools.
   activity set; deny by default without an interactive approver.
 - Add bounded concurrency, request rate, timeout, and cancellation controls.
 
-Progress: Pi's built-in tools are suppressed and the only enabled tool is a
-Riftor-owned HTTP `HEAD` adapter. It checks the active engagement, exact host
-scope, `http_headers` activity, and a fresh operator confirmation; it rejects
-custom ports, does not follow redirects, and records decisions and outcomes in
-the local audit log. Successful responses are also written as SHA-256-linked
-evidence records and can be inspected with `/evidence list`. Broader lifecycle
-hooks, centralized adapter registration, and shared concurrency/rate controls
-remain planned.
+Progress: Pi's built-in tools are suppressed. Riftor exposes two adapters:
+HTTP `HEAD` and DNS A/AAAA lookup. Each checks the active engagement, target
+scope, its exact authorized activity, and a fresh operator confirmation. HTTP
+rejects custom ports and redirects. Both record decisions and outcomes in the
+local audit log and write successful observations to the SHA-256-linked
+evidence chain, inspectable with `/evidence list`. Broader lifecycle hooks,
+centralized adapter registration, and shared concurrency/rate controls remain
+planned.
 
 Engagement state now retains multiple saved authorizations and lets the operator
 select the active one; the previous single-engagement state file migrates when
@@ -109,8 +109,8 @@ next written, preserving its existing engagement.
 Progress: operators can create and update findings tied to verified evidence,
 and export Markdown or JSON reports containing engagement scope, authorization,
 findings, and evidence provenance. Report output is stored under `.riftor/reports`
-with owner-only permissions. Finding deduplication, import/export, richer
-evidence types, and additional assessment adapters remain planned.
+with owner-only permissions. Finding deduplication, import/export, and additional
+assessment adapters remain planned.
 
 ### 4. Extensibility and release
 
@@ -133,10 +133,11 @@ evidence types, and additional assessment adapters remain planned.
 
 The standalone CLI, local engagement record, authorization expiry checks,
 host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
-records are in place. One policy-gated HTTP headers adapter is wired into Pi;
-the Pi shell, file, and default tools stay disabled. Hashed evidence capture,
-operator-reviewed findings, and Markdown/JSON reports are in place. Additional
-adapters, evidence import/export, and findings deduplication remain planned.
+records are in place. Two policy-gated adapters for HTTP headers and DNS lookup
+are wired into Pi; the Pi shell, file, and default tools stay disabled. Hashed
+evidence capture, operator-reviewed findings, and Markdown/JSON reports are in
+place. Additional adapters, evidence import/export, and findings deduplication
+remain planned.
 
 ## Repository and website identity
 

@@ -1,6 +1,6 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { HttpHeadersEvidence } from "./evidence.js";
+import type { EvidenceRecord } from "./evidence.js";
 import type { Finding } from "./findings.js";
 import type { Engagement } from "./types.js";
 
@@ -8,7 +8,7 @@ export interface ReportData {
   generatedAt: string;
   engagement: Engagement;
   findings: Finding[];
-  evidence: HttpHeadersEvidence[];
+  evidence: EvidenceRecord[];
 }
 
 export async function writeReport(
@@ -68,20 +68,27 @@ function renderMarkdown(data: ReportData): string {
   lines.push("## Evidence", "");
   if (!data.evidence.length) lines.push("No evidence captured.", "");
   for (const record of data.evidence) {
+    const activityDetails = record.activity === "http_headers"
+      ? [
+          `- Request: ${escapeInline(record.request.method)} ${escapeInline(record.request.url)}`,
+          `- Response: HTTP ${record.response.status} ${escapeInline(record.response.statusText)}`,
+          ...Object.entries(record.response.headers).map(([name, value]) => `- ${escapeInline(name)}: ${escapeInline(value)}`),
+        ]
+      : [
+          `- DNS query types: ${record.query.types.join(", ")}`,
+          `- A records: ${record.response.A.map(escapeInline).join(", ") || "None"}`,
+          `- AAAA records: ${record.response.AAAA.map(escapeInline).join(", ") || "None"}`,
+        ];
     lines.push(
       `### ${escapeInline(record.activity)} — ${escapeInline(record.target)}`,
       "",
       `- ID: ${escapeInline(record.id)}`,
       `- Captured: ${record.capturedAt}`,
-      `- Request: ${escapeInline(record.request.method)} ${escapeInline(record.request.url)}`,
-      `- Response: HTTP ${record.response.status} ${escapeInline(record.response.statusText)}`,
       `- SHA-256: ${escapeInline(record.sha256)}`,
       "",
+      ...activityDetails,
+      "",
     );
-    for (const [name, value] of Object.entries(record.response.headers)) {
-      lines.push(`- ${escapeInline(name)}: ${escapeInline(value)}`);
-    }
-    lines.push("");
   }
   lines.push("---", "Generated locally by Riftor. Findings reflect the evidence and review recorded in this engagement.", "");
   return lines.join("\n");

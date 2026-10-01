@@ -9,8 +9,8 @@ enforcement, controlled security tool integrations, evidence, findings, and
 reports.
 
 The product is for authorized security assessments. Pi runs inside Riftor, and
-Riftor supplies the only active assessment tool: an approval-gated HTTP `HEAD`
-check limited to an authorized, in-scope host.
+Riftor supplies approval-gated HTTP headers and DNS lookup checks limited to
+authorized, in-scope targets.
 
 ## Development
 
@@ -40,12 +40,13 @@ The complete product and delivery plan is in
 ## Current build
 
 The CLI records an engagement's authorization, manages exact hosts, wildcard
-domains, IPs and CIDRs, and previews policy decisions. Its single network check
-is available only when the engagement authorizes the `http_headers` activity,
-the requested host is in scope, and the operator approves that individual
-request. The check sends one `HEAD` request to the host's standard HTTP or HTTPS
-port, does not follow redirects, and does not download a response body. Pi's
-built-in shell, file, and other tools remain disabled.
+domains, IPs and CIDRs, and previews policy decisions. Each network check
+requires its matching authorized activity (`http_headers` or `dns_lookup`), an
+in-scope target, and individual operator approval. The HTTP check sends one
+`HEAD` request to the standard HTTP or HTTPS port, does not follow redirects,
+and does not download a response body. The DNS check queries A and AAAA records
+for the selected domain. Pi's built-in shell, file, and other tools remain
+disabled.
 
 ```text
 /engagement create <name>
@@ -55,14 +56,16 @@ built-in shell, file, and other tools remain disabled.
 /scope exclude admin.example.com
 /scope list
 /policy check example.com http_headers
+/policy check example.com dns_lookup
 /evidence list
 /finding add Missing strict transport security
 /findings list
 /report markdown
 ```
 
-When creating an engagement, enter `http_headers` among the authorized
-activities to enable this check. Starting Riftor makes no security request.
+When creating an engagement, enter `http_headers` and/or `dns_lookup` among the
+authorized activities to enable those checks. Starting Riftor makes no
+security request.
 Each successful check saves the status and selected response headers to
 `.riftor/evidence.jsonl` in a SHA-256-linked record chain; `/evidence list`
 verifies the chain and displays recent records.

@@ -13,23 +13,26 @@ import type { Engagement } from "./engagement/types.js";
 import { evaluateAction } from "./security/policy.js";
 import { normalizeScopeRule, normalizeTarget } from "./security/scope.js";
 import { createHttpHeadersTool } from "./security/http-headers.js";
+import { createDnsLookupTool } from "./security/dns-lookup.js";
 
 async function main(): Promise<void> {
   const store = new EngagementStore(process.cwd());
   const evidenceStore = new EvidenceStore(process.cwd());
   const findingStore = new FindingStore(process.cwd());
   const terminal = createInterface({ input: stdin, output: stdout });
-  const httpHeadersTool = createHttpHeadersTool(store, evidenceStore, async (message) => {
+  const requestApproval = async (message: string): Promise<boolean> => {
     if (!stdin.isTTY || !stdout.isTTY) return false;
     const answer = await terminal.question(`${message} [yes/no] `);
     return answer.trim().toLowerCase() === "yes";
-  });
+  };
+  const httpHeadersTool = createHttpHeadersTool(store, evidenceStore, requestApproval);
+  const dnsLookupTool = createDnsLookupTool(store, evidenceStore, requestApproval);
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   try {
     ({ session } = await createAgentSession({
       cwd: process.cwd(),
-      tools: [httpHeadersTool.name],
-      customTools: [httpHeadersTool],
+      tools: [httpHeadersTool.name, dnsLookupTool.name],
+      customTools: [httpHeadersTool, dnsLookupTool],
     }));
   } catch (error) {
     terminal.close();
@@ -37,7 +40,7 @@ async function main(): Promise<void> {
   }
 
   console.log("Riftor — standalone security assessment harness");
-  console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP headers check is enabled.");
+  console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP headers and DNS checks are enabled.");
   console.log("Use /help for engagement and scope commands. Type /exit to quit.\n");
 
   const unsubscribe = session.subscribe((event) => {
@@ -79,7 +82,7 @@ async function handleLocalCommand(
       "Local commands:",
       "  /engagement                 Show the active engagement",
       "  /engagement create <name>   Record authorization and create one",
-      "                              Include http_headers in its authorized activities to use the HTTP check",
+      "                              Activities include http_headers and dns_lookup for the available checks",
       "  /engagement list            List saved engagements",
       "  /engagement use <id>        Select an engagement without deleting others",
       "  /scope list                 Show included and excluded targets",
@@ -158,9 +161,12 @@ async function handleLocalCommand(
       return true;
     }
     for (const record of records.slice(-20).reverse()) {
+      const responseSummary = record.activity === "http_headers"
+        ? `HTTP ${record.response.status} ${record.response.statusText}`
+        : `A ${record.response.A.length} / AAAA ${record.response.AAAA.length}`;
       console.log([
         `${record.id}  ${record.capturedAt}  ${record.activity}  ${record.target}`,
-        `  HTTP ${record.response.status} ${record.response.statusText}`,
+        `  ${responseSummary}`,
         `  SHA-256 ${record.sha256}`,
       ].join("\n"));
     }
