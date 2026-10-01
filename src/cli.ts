@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { FindingStore } from "./engagement/finding-store.js";
+import { exportWorkspace, importWorkspace } from "./engagement/archive.js";
 import type { Finding, FindingConfidence, FindingSeverity, FindingStatus } from "./engagement/findings.js";
 import { EvidenceStore } from "./engagement/evidence-store.js";
 import { writeReport } from "./engagement/report.js";
@@ -28,7 +29,7 @@ async function main(): Promise<void> {
       "Run Riftor interactively. It embeds the Pi agent runtime; no separate Pi CLI is needed.",
       "All network checks require a live engagement, an authorized activity, an in-scope target, and per-action operator approval.",
       "",
-      "Start with /help for engagement, scope, evidence, finding, and report commands.",
+      "Start with /help for engagement, scope, evidence, finding, report, and archive commands.",
       "Network activities: http_headers, dns_lookup, tls_certificate",
     ].join("\n"));
     return;
@@ -129,6 +130,8 @@ async function handleLocalCommand(
       "  /finding status <id> <state>  Update a finding (open/resolved/accepted)",
       "  /findings list              List findings for the active engagement",
       "  /report markdown|json       Export an engagement report",
+      "  /archive export <path>      Export all engagements, evidence, and findings",
+      "  /archive import <path>      Import an archive into an empty workspace",
       "  /exit                       Quit",
     ].join("\n"));
     return true;
@@ -284,6 +287,36 @@ async function handleLocalCommand(
   if (input === "/report markdown" || input === "/report json") {
     const format = input.endsWith("json") ? "json" : "markdown";
     await generateReport(format, store, evidenceStore, findingStore);
+    return true;
+  }
+
+  if (input.startsWith("/archive export ")) {
+    const path = input.slice("/archive export ".length).trim();
+    if (!path) {
+      console.log("Usage: /archive export <path>");
+      return true;
+    }
+    try {
+      const destination = await exportWorkspace(process.cwd(), path);
+      console.log(`Exported workspace archive to ${destination}. Its SHA-256 detects accidental changes but does not prove who created it.`);
+    } catch (error) {
+      console.log(`Workspace export failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+    return true;
+  }
+
+  if (input.startsWith("/archive import ")) {
+    const path = input.slice("/archive import ".length).trim();
+    if (!path) {
+      console.log("Usage: /archive import <path>");
+      return true;
+    }
+    try {
+      const result = await importWorkspace(process.cwd(), path);
+      console.log(`Imported ${result.engagements} engagements, ${result.evidence} evidence records, and ${result.findings} findings. No engagement was activated; review authorization and activate one explicitly.`);
+    } catch (error) {
+      console.log(`Workspace import failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
     return true;
   }
 

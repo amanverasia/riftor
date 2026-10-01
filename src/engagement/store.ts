@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { acquireFileLock } from "./file-lock.js";
 import type { Engagement } from "./types.js";
 import { normalizeScopeRule } from "../security/scope.js";
+import { assertWorkspaceReady } from "./workspace-guard.js";
 
 interface StoredState {
   version: 2;
@@ -65,6 +66,21 @@ export class EngagementStore {
     }
   }
 
+  async importInactive(engagements: Engagement[]): Promise<void> {
+    const validated = engagements.map(validateEngagement);
+    const ids = validated.map((item) => item.id);
+    if (new Set(ids).size !== ids.length) throw new Error("Duplicate engagement IDs in import");
+
+    const release = await this.acquireActionLock();
+    try {
+      const state = await this.#readState();
+      if (state.engagements.length) throw new Error("Engagement import requires an empty workspace");
+      await this.#writeState({ version: 2, activeEngagementId: null, engagements: validated });
+    } finally {
+      await release();
+    }
+  }
+
   /**
    * Atomically update the active engagement while holding the same lock used by
    * saves and actions. The mutator receives a detached working copy; it may
@@ -103,6 +119,7 @@ export class EngagementStore {
   }
 
   async #readState(): Promise<StoredState> {
+    await assertWorkspaceReady(dirname(this.#directory));
     try {
       const raw = await readFile(this.#statePath, "utf8");
       const stored: unknown = JSON.parse(raw);
@@ -130,6 +147,7 @@ export class EngagementStore {
   }
 
   async #writeState(state: StoredState): Promise<void> {
+    await assertWorkspaceReady(dirname(this.#directory));
     await mkdir(this.#directory, { recursive: true, mode: 0o700 });
     await chmod(this.#directory, 0o700);
     const temporaryPath = join(this.#directory, `.engagement-${randomUUID()}.tmp`);

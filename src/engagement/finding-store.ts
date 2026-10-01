@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { open, readFile, rename, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { withFileLock } from "./file-lock.js";
 import type { Finding, FindingConfidence, FindingSeverity, FindingStatus } from "./findings.js";
+import { assertWorkspaceReady } from "./workspace-guard.js";
 
 interface FindingState {
   version: 1;
@@ -54,6 +55,7 @@ export class FindingStore {
   }
 
   async #readUnlocked(): Promise<Finding[]> {
+    await assertWorkspaceReady(dirname(this.#directory));
     let contents: string;
     try {
       const info = await stat(this.#path);
@@ -80,6 +82,7 @@ export class FindingStore {
   }
 
   async #writeUnlocked(findings: Finding[]): Promise<void> {
+    await assertWorkspaceReady(dirname(this.#directory));
     const state: FindingState = { version: 1, findings };
     const contents = `${JSON.stringify(state, null, 2)}\n`;
     if (Buffer.byteLength(contents, "utf8") > MAX_STATE_BYTES) {

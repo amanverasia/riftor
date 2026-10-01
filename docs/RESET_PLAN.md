@@ -115,13 +115,14 @@ and export Markdown or JSON reports containing engagement scope, authorization,
 findings, and evidence provenance. Report output is stored under `.riftor/reports`
 with owner-only permissions. Engagement and finding mutations serialize across
 Riftor processes; malformed persisted engagement and finding data fails closed.
-Finding deduplication, import/export, and additional assessment adapters remain
-planned.
+Workspace archives now export/import engagements, evidence, and findings with
+schema validation and a checksum; imported engagements remain inactive.
+Finding deduplication and additional assessment adapters remain planned.
 
 ### 4. Extensibility and release
 
 - Add skills and MCP integrations behind the same policy and audit boundary.
-- Add import/export, migration, backups, and recovery behavior.
+- Add migration, backups, and recovery behavior beyond the current JSON workspace archive.
 - Document threat model, supported platforms, installation, and safe operation.
 - Add CI checks and release packaging for the Pi ecosystem.
 
@@ -141,9 +142,9 @@ The standalone CLI, local engagement records, authorization expiry checks,
 host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
 records are in place. Three policy-gated adapters for HTTP headers, DNS lookup,
 and TLS certificate inspection are wired into Pi; the Pi shell, file, and default
-tools stay disabled. Hashed evidence capture, operator-reviewed findings, and
-Markdown/JSON reports are in place. Additional adapters, evidence import/export,
-and findings deduplication remain planned.
+tools stay disabled. Hashed evidence capture, operator-reviewed findings,
+Markdown/JSON reports, and JSON workspace archives are in place. Additional
+adapters and findings deduplication remain planned.
 
 ## Repository and website identity
 

@@ -77,6 +77,7 @@ entry. Pi's built-in shell, file, and other tools remain disabled.
 /finding add Missing strict transport security
 /findings list
 /report markdown
+/archive export ./riftor-workspace.json
 ```
 
 When creating an engagement, enter the authorized activity names among
@@ -88,7 +89,15 @@ recent records. Reports preserve older HTTP evidence that predates pinned-IP
 recording.
 Operators can record severity- and confidence-rated findings tied to evidence,
 track each as open, resolved, or accepted, and export a local Markdown or JSON
-report with `/report markdown` or `/report json`.
+report with `/report markdown` or `/report json`. `/archive export <path>` saves
+all engagements, evidence, and findings as one JSON archive. Import it with
+`/archive import <path>` from a workspace with no `.riftor` directory. Imported
+engagements stay inactive until selected with `/engagement use`; review their
+authorization before running checks. The archive checksum detects accidental
+changes but does not authenticate its creator. Archive files do not include
+local audit logs, reports, or Pi provider credentials.
+To restore an archive, start Riftor in a different workspace that has no
+`.riftor` directory, then run `/archive import <path>`.
 
 This rewrite is at its bootstrap stage. The previous Python implementation is
 preserved in Git history; this branch contains the new standalone CLI.
