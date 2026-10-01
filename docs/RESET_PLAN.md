@@ -86,15 +86,18 @@ must not inherit arbitrary shell access merely because Pi can run shell tools.
   activity set; deny by default without an interactive approver.
 - Add bounded concurrency, request rate, timeout, and cancellation controls.
 
-Progress: Pi's built-in tools are suppressed. Riftor exposes HTTP `HEAD`, DNS
-A/AAAA lookup, and TLS leaf-certificate inspection. Each checks the active
-engagement, target scope, its exact authorized activity, and fresh operator
-confirmation. HTTP rejects custom ports and redirects. HTTP and TLS pin their
-connections to validated IPs; private addresses require explicit IP/CIDR scope.
-All three record outcomes in the local audit log and successful observations in
-the SHA-256-linked evidence chain, inspectable with `/evidence list`. Broader
-lifecycle hooks, centralized adapter registration, and rate controls remain
-planned.
+Progress: Pi's built-in tools are suppressed, and the embedded runtime uses a
+Riftor-owned configuration directory without discovering Pi extensions, skills,
+prompts, themes, or project context files. Riftor exposes HTTP `HEAD`, DNS A/AAAA
+lookup, and TLS leaf-certificate inspection. Each checks the active engagement,
+target scope, its exact authorized activity, and fresh operator confirmation.
+HTTP rejects custom ports and redirects. HTTP and TLS pin their connections to
+validated IPs; private addresses require explicit IP/CIDR scope. Authorization
+is held under a cross-process lease and rechecked immediately before network
+activity. All three tools record outcomes in the local audit log and successful
+observations in the SHA-256-linked evidence chain, inspectable with `/evidence
+list`. Broader lifecycle hooks, centralized adapter registration, and rate
+controls remain planned.
 
 Engagement state now retains multiple saved authorizations and lets the operator
 select the active one; the previous single-engagement state file migrates when
@@ -110,8 +113,10 @@ next written, preserving its existing engagement.
 Progress: operators can create and update findings tied to verified evidence,
 and export Markdown or JSON reports containing engagement scope, authorization,
 findings, and evidence provenance. Report output is stored under `.riftor/reports`
-with owner-only permissions. Finding deduplication, import/export, and additional
-assessment adapters remain planned.
+with owner-only permissions. Engagement and finding mutations serialize across
+Riftor processes; malformed persisted engagement and finding data fails closed.
+Finding deduplication, import/export, and additional assessment adapters remain
+planned.
 
 ### 4. Extensibility and release
 

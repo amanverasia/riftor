@@ -46,3 +46,17 @@ test("Markdown reports render legacy HTTP evidence without pinned address fields
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("report timestamps cannot escape the reports directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "riftor-report-time-"));
+  try {
+    await assert.rejects(writeReport(directory, "markdown", {
+      generatedAt: "../../outside",
+      engagement: {},
+      findings: [],
+      evidence: [],
+    }), /timestamp is invalid/i);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

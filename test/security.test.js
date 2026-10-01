@@ -119,6 +119,17 @@ test("a malformed activity string cannot authorize an activity by substring", ()
   assert.match(decision.reason, /activity/i);
 });
 
+test("malformed scope rules fail closed in the policy function", () => {
+  const malformed = engagement({ scope: { include: [42], exclude: [] } });
+  const decision = evaluateAction(malformed, {
+    target: "example.com",
+    activity: "http_headers",
+    humanApproved: true,
+  });
+  assert.equal(decision.outcome, "deny");
+  assert.match(decision.reason, /scope/i);
+});
+
 test("evidence records form a verifiable hash chain and reject edits", async () => {
   await withTempDir(async (directory) => {
     const store = new EvidenceStore(directory);
@@ -233,6 +244,31 @@ test("the TLS certificate tool refuses an out-of-scope hostname before approval 
     const result = await tool.execute("call-tls-out-of-scope", { target: "outside.example.net" }, undefined, undefined, {});
     assert.match(result.content[0].text, /Denied: Target is outside engagement scope/);
     assert.equal(approvalPrompts, 0);
+    assert.deepEqual(await evidenceStore.list(), []);
+  });
+});
+
+test("the TLS tool blocks a private DNS answer unless its IP is explicitly scoped", async () => {
+  await withTempDir(async (directory) => {
+    const store = new EngagementStore(directory);
+    const evidenceStore = new EvidenceStore(directory);
+    const active = engagement({ authorization: { ...engagement().authorization, activities: ["tls_certificate"] } });
+    await store.save(active);
+    let connectorCalls = 0;
+    const tool = createTlsCertificateTool(store, evidenceStore, async () => true, {
+      createResolver: () => ({
+        resolve4: async () => ["127.0.0.1"],
+        resolve6: async () => [],
+        cancel() {},
+      }),
+      inspectLeaf: async () => {
+        connectorCalls += 1;
+        throw new Error("connector should not run");
+      },
+    });
+    const result = await tool.execute("tls-private-answer", { target: "example.com" }, undefined, undefined, {});
+    assert.match(result.content[0].text, /outside explicit engagement scope/i);
+    assert.equal(connectorCalls, 0);
     assert.deepEqual(await evidenceStore.list(), []);
   });
 });

@@ -1,5 +1,5 @@
 import type { Engagement, PolicyDecision } from "../engagement/types.js";
-import { isTargetInScope, normalizeTarget } from "./scope.js";
+import { isTargetInScope, normalizeScopeRule, normalizeTarget } from "./scope.js";
 
 export interface ActionRequest {
   target: string;
@@ -21,6 +21,9 @@ export function evaluateAction(
   }
   if (!engagement.scope || !Array.isArray(engagement.scope.include) || !Array.isArray(engagement.scope.exclude)) {
     return { outcome: "deny", reason: "Engagement scope is malformed" };
+  }
+  if (!engagement.scope.include.every(isNormalizedRule) || !engagement.scope.exclude.every(isNormalizedRule)) {
+    return { outcome: "deny", reason: "Engagement scope rules are malformed" };
   }
 
   const startsAt = Date.parse(engagement.authorization.startsAt);
@@ -51,4 +54,13 @@ export function evaluateAction(
     return { outcome: "deny", reason: "Operator approval is unavailable" };
   }
   return { outcome: "approval_required", reason: "Operator approval is required before execution" };
+}
+
+function isNormalizedRule(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return normalizeScopeRule(value) === value;
+  } catch {
+    return false;
+  }
 }

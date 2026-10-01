@@ -16,11 +16,13 @@ export async function writeReport(
   format: "markdown" | "json",
   data: ReportData,
 ): Promise<string> {
+  const generatedAt = new Date(data.generatedAt);
+  if (!Number.isFinite(generatedAt.getTime())) throw new Error("Report timestamp is invalid");
+  const timestamp = generatedAt.toISOString().replace(/[:.]/g, "-");
   const directory = join(workdir, ".riftor", "reports");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await chmod(join(workdir, ".riftor"), 0o700);
   await chmod(directory, 0o700);
-  const timestamp = data.generatedAt.replace(/[:.]/g, "-");
   const path = join(directory, `assessment-${timestamp}.${format === "markdown" ? "md" : "json"}`);
   const content = format === "json" ? `${JSON.stringify(data, null, 2)}\n` : renderMarkdown(data);
   await writeFile(path, content, { mode: 0o600, flag: "wx" });
@@ -34,10 +36,10 @@ function renderMarkdown(data: ReportData): string {
     `# Security assessment: ${escapeInline(engagement.name)}`,
     "",
     `- Engagement ID: ${escapeInline(engagement.id)}`,
-    `- Generated: ${data.generatedAt}`,
+    `- Generated: ${escapeInline(data.generatedAt)}`,
     `- Authorized by: ${escapeInline(engagement.authorization.authorizedBy)}`,
     `- Authorization reference: ${escapeInline(engagement.authorization.reference)}`,
-    `- Authorization expires: ${engagement.authorization.expiresAt}`,
+    `- Authorization expires: ${escapeInline(engagement.authorization.expiresAt)}`,
     `- Authorized activities: ${engagement.authorization.activities.map(escapeInline).join(", ")}`,
     `- Included scope: ${engagement.scope.include.map(escapeInline).join(", ") || "None"}`,
     `- Excluded scope: ${engagement.scope.exclude.map(escapeInline).join(", ") || "None"}`,
@@ -100,7 +102,7 @@ function renderMarkdown(data: ReportData): string {
       `### ${escapeInline(record.activity)} — ${escapeInline(record.target)}`,
       "",
       `- ID: ${escapeInline(record.id)}`,
-      `- Captured: ${record.capturedAt}`,
+      `- Captured: ${escapeInline(record.capturedAt)}`,
       `- SHA-256: ${escapeInline(record.sha256)}`,
       "",
       ...activityDetails,

@@ -14,7 +14,9 @@ checks limited to authorized, in-scope targets.
 
 ## Development
 
-Requirements: Node.js 22 or newer and credentials for a supported model provider.
+Requirements: Node.js 22.19 or newer and credentials for a supported model
+provider. Riftor uses Pi's provider credentials and model configuration, so no
+separate Pi CLI installation is required.
 
 Install the current build directly from GitHub:
 
@@ -24,6 +26,15 @@ riftor
 ```
 
 No separate Pi CLI is required.
+
+Set a provider key in the environment before starting, for example
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`, then use `/models`
+and `/model <provider/model>` inside Riftor. Riftor keeps its Pi model and
+credential configuration in `~/.riftor/agent` by default; set `RIFTOR_AGENT_DIR`
+to use another location. It does not load Pi extensions, skills, prompts, or
+project context into the assessment process. See
+[Pi's provider authentication guide](https://pi.dev/docs/latest/providers) for
+supported providers and credential setup.
 
 For local development:
 
@@ -36,6 +47,8 @@ npm start
 
 The complete product and delivery plan is in
 [`docs/RESET_PLAN.md`](docs/RESET_PLAN.md).
+The current security boundaries and limitations are in
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 ## Current build
 

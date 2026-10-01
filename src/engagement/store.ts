@@ -65,6 +65,39 @@ export class EngagementStore {
     }
   }
 
+  /**
+   * Atomically update the active engagement while holding the same lock used by
+   * saves and actions. The mutator receives a detached working copy; it may
+   * mutate that copy or return a replacement. Returning a value detached from
+   * the store prevents callers from changing persisted state without a save.
+   */
+  async updateActive(
+    mutator: (engagement: Engagement) => Engagement | void | Promise<Engagement | void>,
+    expectedEngagementId?: string,
+  ): Promise<Engagement | null> {
+    const release = await this.acquireActionLock();
+    try {
+      const state = await this.#readState();
+      if (state.activeEngagementId === null) return null;
+      if (expectedEngagementId !== undefined && state.activeEngagementId !== expectedEngagementId) return null;
+
+      const index = state.engagements.findIndex((item) => item.id === state.activeEngagementId);
+      if (index === -1) throw new Error("Active engagement ID does not exist in state");
+
+      const originalId = state.engagements[index].id;
+      const workingCopy = structuredClone(state.engagements[index]);
+      const result = await mutator(workingCopy);
+      const updated = validateEngagement(result === undefined ? workingCopy : result);
+      if (updated.id !== originalId) throw new Error("An active engagement ID cannot be changed");
+
+      state.engagements[index] = structuredClone(updated);
+      await this.#writeState(state);
+      return structuredClone(updated);
+    } finally {
+      await release();
+    }
+  }
+
   acquireActionLock(): Promise<() => Promise<void>> {
     return acquireFileLock(this.#actionLockPath);
   }

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { FindingStore } from "./engagement/finding-store.js";
 import type { Finding, FindingConfidence, FindingSeverity, FindingStatus } from "./engagement/findings.js";
 import { EvidenceStore } from "./engagement/evidence-store.js";
@@ -43,10 +45,22 @@ async function main(): Promise<void> {
   const httpHeadersTool = createHttpHeadersTool(store, evidenceStore, requestApproval);
   const dnsLookupTool = createDnsLookupTool(store, evidenceStore, requestApproval);
   const tlsCertificateTool = createTlsCertificateTool(store, evidenceStore, requestApproval);
+  const agentDir = resolve(process.env.RIFTOR_AGENT_DIR ?? join(homedir(), ".riftor", "agent"));
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: process.cwd(),
+    agentDir,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   try {
     ({ session } = await createAgentSession({
       cwd: process.cwd(),
+      agentDir,
+      resourceLoader,
       tools: [httpHeadersTool.name, dnsLookupTool.name, tlsCertificateTool.name],
       customTools: [httpHeadersTool, dnsLookupTool, tlsCertificateTool],
     }));
@@ -57,7 +71,8 @@ async function main(): Promise<void> {
 
   console.log("Riftor — standalone security assessment harness");
   console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP, DNS, and TLS checks are enabled.");
-  console.log("Use /help for engagement and scope commands. Type /exit to quit.\n");
+  console.log(`Model: ${session.model ? `${session.model.provider}/${session.model.id}` : "not selected"}`);
+  console.log("Use /help for engagement, model, and scope commands. Type /exit to quit.\n");
 
   const unsubscribe = session.subscribe((event) => {
     if (
@@ -74,7 +89,7 @@ async function main(): Promise<void> {
       const input = prompt.trim();
       if (input === "/exit") break;
       if (!input) continue;
-      if (await handleLocalCommand(input, terminal, store, evidenceStore, findingStore)) continue;
+      if (await handleLocalCommand(input, terminal, store, evidenceStore, findingStore, session)) continue;
 
       await session.prompt(prompt);
       process.stdout.write("\n\n");
@@ -92,10 +107,13 @@ async function handleLocalCommand(
   store: EngagementStore,
   evidenceStore: EvidenceStore,
   findingStore: FindingStore,
+  session: Awaited<ReturnType<typeof createAgentSession>>["session"],
 ): Promise<boolean> {
   if (input === "/help") {
     console.log([
       "Local commands:",
+      "  /models                     List models available with current credentials",
+      "  /model <provider/model>     Select a Pi model for this session",
       "  /engagement                 Show the active engagement",
       "  /engagement create <name>   Record authorization and create one",
       "                              Activities: http_headers, dns_lookup, tls_certificate",
@@ -113,6 +131,46 @@ async function handleLocalCommand(
       "  /report markdown|json       Export an engagement report",
       "  /exit                       Quit",
     ].join("\n"));
+    return true;
+  }
+
+  if (input === "/models" || input === "/model" || input.startsWith("/model ")) {
+    const requested = input.startsWith("/model ") ? input.slice("/model ".length).trim() : "";
+    let models;
+    try {
+      models = await session.modelRuntime.getAvailable();
+    } catch (error) {
+      console.log(`Model list unavailable: ${error instanceof Error ? error.message : "provider configuration error"}`);
+      return true;
+    }
+    if (!requested) {
+      if (!models.length) {
+        console.log("No authenticated models are available. Set a supported provider environment variable or configure Pi credentials, then restart Riftor.");
+      } else {
+        console.log(`Current model: ${session.model ? `${session.model.provider}/${session.model.id}` : "not selected"}`);
+        for (const model of models) console.log(`  ${model.provider}/${model.id}  ${model.name}`);
+      }
+      return true;
+    }
+
+    const separator = requested.indexOf("/");
+    if (separator < 1 || !requested.slice(separator + 1)) {
+      console.log("Usage: /model <provider/model>");
+      return true;
+    }
+    const provider = requested.slice(0, separator);
+    const modelId = requested.slice(separator + 1);
+    const model = models.find((available) => available.provider === provider && available.id === modelId);
+    if (!model) {
+      console.log(`Model is unavailable with current credentials: ${requested}. Use /models to list available models.`);
+      return true;
+    }
+    try {
+      await session.setModel(model);
+      console.log(`Selected model ${model.provider}/${model.id}.`);
+    } catch (error) {
+      console.log(`Could not select model: ${error instanceof Error ? error.message : "unknown model error"}`);
+    }
     return true;
   }
 
@@ -320,9 +378,9 @@ async function addFinding(
     remediation,
     evidenceIds: [...new Set(evidenceIds)],
   };
-  const findings = await findingStore.list();
-  findings.push(finding);
-  await findingStore.save(findings);
+  await findingStore.update((findings) => {
+    findings.push(finding);
+  });
   await store.appendAudit({ kind: "finding_created", engagementId: engagement.id, findingId: finding.id, evidenceIds: finding.evidenceIds });
   console.log(`Recorded finding ${finding.id} for ${finding.target}.`);
 }
@@ -343,17 +401,20 @@ async function updateFinding(
     console.log("Status must be open, resolved, or accepted.");
     return;
   }
-  const findings = await findingStore.list();
-  const finding = findings.find((item) => item.id === id && item.engagementId === engagement.id);
-  if (!finding) {
+  let updated = false;
+  await findingStore.update((findings) => {
+    const finding = findings.find((item) => item.id === id && item.engagementId === engagement.id);
+    if (!finding) return;
+    finding.status = rawStatus as FindingStatus;
+    finding.updatedAt = new Date().toISOString();
+    updated = true;
+  });
+  if (!updated) {
     console.log("Finding not found in the active engagement.");
     return;
   }
-  finding.status = rawStatus as FindingStatus;
-  finding.updatedAt = new Date().toISOString();
-  await findingStore.save(findings);
-  await store.appendAudit({ kind: "finding_status_updated", engagementId: engagement.id, findingId: id, status: finding.status });
-  console.log(`Finding ${id} marked ${finding.status}.`);
+  await store.appendAudit({ kind: "finding_status_updated", engagementId: engagement.id, findingId: id, status: rawStatus });
+  console.log(`Finding ${id} marked ${rawStatus}.`);
 }
 
 async function generateReport(
@@ -439,15 +500,20 @@ async function handleScopeCommand(input: string, store: EngagementStore): Promis
     return;
   }
 
-  const bucket = action === "exclude" ? engagement.scope.exclude : engagement.scope.include;
-  if (action === "remove") {
-    engagement.scope.include = engagement.scope.include.filter((item) => item !== rule);
-    engagement.scope.exclude = engagement.scope.exclude.filter((item) => item !== rule);
-  } else if (!bucket.includes(rule)) {
-    bucket.push(rule);
+  const updated = await store.updateActive((active) => {
+    const bucket = action === "exclude" ? active.scope.exclude : active.scope.include;
+    if (action === "remove") {
+      active.scope.include = active.scope.include.filter((item) => item !== rule);
+      active.scope.exclude = active.scope.exclude.filter((item) => item !== rule);
+    } else if (!bucket.includes(rule)) {
+      bucket.push(rule);
+    }
+  }, engagement.id);
+  if (!updated) {
+    console.log("Active engagement changed; review it and retry the scope update.");
+    return;
   }
-  await store.save(engagement);
-  await store.appendAudit({ kind: "scope_updated", engagementId: engagement.id, action, rule });
+  await store.appendAudit({ kind: "scope_updated", engagementId: updated.id, action, rule });
   console.log(`Scope ${action}: ${rule}`);
 }
 
