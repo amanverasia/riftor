@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea or improvement for riftor
+description: Suggest an improvement to the Riftor CLI or assessment workflow
 labels: ["enhancement"]
 body:
   - type: textarea
@@ -25,9 +25,9 @@ body:
     attributes:
       label: Area
       options:
-        - TUI / UX
-        - Tools / agent loop
-        - Scope / engagement / reporting
-        - Providers / models
-        - Packaging / distribution
+        - CLI / agent workflow
+        - Authorization / scope
+        - Assessment adapters
+        - Findings / evidence / reports
+        - Installation / documentation
         - Other
