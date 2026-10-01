@@ -26,14 +26,34 @@ export async function acquireFileLock(path: string): Promise<() => Promise<void>
       };
     } catch (error) {
       if (!isExists(error)) throw error;
-      if (await isAbandoned(path)) {
-        await rm(path, { force: true });
-        continue;
-      }
+      if (await removeAbandonedLock(path)) continue;
       await delay(50);
     }
   }
   throw new Error(`Timed out waiting for Riftor lock: ${path}`);
+}
+
+async function removeAbandonedLock(path: string): Promise<boolean> {
+  const recoveryPath = `${path}.recovery`;
+  let recoveryHandle;
+  try {
+    recoveryHandle = await open(recoveryPath, "wx", 0o600);
+    await recoveryHandle.writeFile(JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+    await recoveryHandle.close();
+    recoveryHandle = undefined;
+  } catch (error) {
+    if (recoveryHandle) await recoveryHandle.close().catch(() => undefined);
+    if (isExists(error)) return false;
+    throw error;
+  }
+
+  try {
+    if (!await isAbandoned(path)) return false;
+    await rm(path, { force: true });
+    return true;
+  } finally {
+    await rm(recoveryPath, { force: true });
+  }
 }
 
 export async function withFileLock<T>(path: string, action: () => Promise<T>): Promise<T> {
@@ -52,7 +72,10 @@ async function isAbandoned(path: string): Promise<boolean> {
     lock = JSON.parse(await readFile(path, "utf8")) as typeof lock;
     modifiedAt = (await stat(path)).mtimeMs;
   } catch (error) {
-    if (isMissing(error)) return true;
+    // A waiter can see EEXIST, then the owner can release before this read.
+    // A missing lock is already unlocked; never let that waiter remove a
+    // replacement lock another contender may have created in the meantime.
+    if (isMissing(error)) return false;
     try {
       return Date.now() - (await stat(path)).mtimeMs >= STALE_LOCK_MS;
     } catch {

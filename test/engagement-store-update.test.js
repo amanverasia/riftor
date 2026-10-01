@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -50,6 +50,35 @@ test("updateActive serializes concurrent read-modify-write calls across store in
     for (let index = 0; index < 40; index += 1) {
       assert.ok(stored.scope.include.includes(`host-${index}.example.com`));
     }
+  });
+});
+
+test("stale lock recovery preserves serialization under concurrent engagement updates", async () => {
+  await withTempDir(async (directory) => {
+    const stateDirectory = join(directory, ".riftor");
+    await mkdir(stateDirectory, { recursive: true });
+    const stores = Array.from({ length: 6 }, () => new EngagementStore(directory));
+    await stores[0].save(engagement());
+    await writeFile(join(stateDirectory, "action.lock"), JSON.stringify({
+      pid: 99_999_999,
+      createdAt: Date.now() - 10 * 60_000,
+    }));
+    let activeMutators = 0;
+    let maxActiveMutators = 0;
+    await Promise.all(Array.from({ length: 40 }, (_, index) =>
+      stores[index % stores.length].updateActive(async (active) => {
+        activeMutators += 1;
+        maxActiveMutators = Math.max(maxActiveMutators, activeMutators);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        active.scope.include.push(`stale-${index}.example.com`);
+        activeMutators -= 1;
+      }),
+    ));
+
+    const stored = await stores[0].load();
+    assert.ok(stored);
+    assert.equal(stored.scope.include.length, 41);
+    assert.equal(maxActiveMutators, 1);
   });
 });
 
