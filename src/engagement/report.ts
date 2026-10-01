@@ -1,11 +1,10 @@
-import { createHash } from "node:crypto";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { EvidenceRecord } from "./evidence.js";
 import type { Finding } from "./findings.js";
 import type { Engagement } from "./types.js";
-import { normalizeTarget } from "../security/scope.js";
+import { findingFingerprint, legacyFindingFingerprint } from "./finding-identity.js";
 
 const riftorVersion = (createRequire(import.meta.url)("../../package.json") as { version: string }).version;
 
@@ -67,7 +66,10 @@ function renderSarif(data: ReportData) {
             ? "warning"
             : "note",
         message: { text: `${finding.title} [${finding.severity}] — ${finding.target} (${finding.confidence}, ${finding.status})\n\n${finding.description}\n\nRemediation: ${finding.remediation}` },
-        partialFingerprints: { "riftorFinding/v1": findingFingerprint(finding) },
+        partialFingerprints: {
+          "riftorFinding/v1": legacyFindingFingerprint(finding),
+          "riftorFinding/v2": findingFingerprint(finding),
+        },
         ...(finding.status === "accepted" ? {
           suppressions: [{ kind: "external", status: "accepted", justification: "Accepted by the operator in Riftor." }],
         } : {}),
@@ -96,17 +98,6 @@ function renderSarif(data: ReportData) {
       },
     }],
   };
-}
-
-function findingFingerprint(finding: Finding): string {
-  let target: string;
-  try {
-    target = normalizeTarget(finding.target);
-  } catch {
-    target = finding.target.trim().toLowerCase();
-  }
-  const identity = JSON.stringify([target, finding.severity, finding.title.trim().toLowerCase()]);
-  return createHash("sha256").update(identity).digest("hex");
 }
 
 function renderMarkdown(data: ReportData): string {

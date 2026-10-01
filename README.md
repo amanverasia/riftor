@@ -105,6 +105,15 @@ local audit logs, reports, action-budget history, or Pi provider credentials.
 To restore an archive, start Riftor in a different workspace that has no
 `.riftor` directory, then run `/archive import <path>`.
 
+When `/finding add` finds an existing finding in the same engagement with the
+same normalized target and case- and whitespace-normalized title, it asks
+whether to merge the new evidence, create a separate finding, or cancel. A
+merge keeps the original finding ID, severity, confidence, description,
+remediation, and review status; it appends only evidence IDs that were not
+already linked. Status changes record the previous and new status in the local
+audit log and never remove evidence links. SARIF retains the original v1
+fingerprint and adds a v2 fingerprint that remains stable when severity changes.
+
 This rewrite is at its bootstrap stage. The previous Python implementation is
 preserved in Git history; this branch contains the new standalone CLI.
 

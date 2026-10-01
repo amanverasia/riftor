@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { writeReport } from "../dist/engagement/report.js";
+import { findingFingerprint } from "../dist/engagement/finding-identity.js";
 
 const packageInfo = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
@@ -91,8 +92,11 @@ test("SARIF 2.1.0 reports preserve finding severity and evidence provenance", as
     assert.equal(sarif.runs[0].results.length, 2);
     assert.equal(sarif.runs[0].results[0].level, "error");
     assert.deepEqual(sarif.runs[0].results[0].properties.evidenceIds, ["evidence-sarif"]);
-    assert.deepEqual(Object.keys(sarif.runs[0].results[0].partialFingerprints), ["riftorFinding/v1"]);
+    assert.deepEqual(Object.keys(sarif.runs[0].results[0].partialFingerprints), ["riftorFinding/v1", "riftorFinding/v2"]);
     assert.match(sarif.runs[0].results[0].partialFingerprints["riftorFinding/v1"], /^[a-f\d]{64}$/);
+    assert.match(sarif.runs[0].results[0].partialFingerprints["riftorFinding/v2"], /^[a-f\d]{64}$/);
+    assert.equal(findingFingerprint({ ...finding, severity: "info" }), sarif.runs[0].results[0].partialFingerprints["riftorFinding/v2"]);
+    assert.equal(findingFingerprint({ ...finding, title: "  SENSITIVE   HEADER ", target: "EXAMPLE.COM." }), sarif.runs[0].results[0].partialFingerprints["riftorFinding/v2"]);
     assert.equal(sarif.runs[0].results[1].properties.status, "accepted");
     assert.equal(sarif.runs[0].results[1].suppressions[0].status, "accepted");
     assert.equal(sarif.runs[0].properties.evidence[0].sha256, "abc123");

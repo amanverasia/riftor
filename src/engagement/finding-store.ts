@@ -3,6 +3,7 @@ import { open, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { withFileLock } from "./file-lock.js";
 import type { Finding, FindingConfidence, FindingSeverity, FindingStatus } from "./findings.js";
+import { findingIdentity } from "./finding-identity.js";
 import { assertWorkspaceReady } from "./workspace-guard.js";
 
 interface FindingState {
@@ -22,6 +23,20 @@ const SEVERITIES = new Set<FindingSeverity>(["critical", "high", "medium", "low"
 const CONFIDENCES = new Set<FindingConfidence>(["confirmed", "high", "medium", "low"]);
 const STATUSES = new Set<FindingStatus>(["open", "resolved", "accepted"]);
 
+export type FindingAddResolution =
+  | { kind: "merge"; findingId: string }
+  | { kind: "separate" };
+
+export type FindingAddResult =
+  | { kind: "created"; finding: Finding }
+  | { kind: "merged"; finding: Finding; addedEvidenceIds: string[] }
+  | { kind: "duplicate"; matches: Finding[] };
+
+export type FindingStatusUpdateResult =
+  | { kind: "not_found" }
+  | { kind: "unchanged"; finding: Finding }
+  | { kind: "updated"; finding: Finding; previousStatus: FindingStatus };
+
 export class FindingStore {
   readonly #directory: string;
   readonly #path: string;
@@ -40,6 +55,85 @@ export class FindingStore {
   async save(findings: Finding[]): Promise<void> {
     const validated = validateFindings(findings);
     await withFileLock(this.#lockPath, () => this.#writeUnlocked(validated));
+  }
+
+  /**
+   * Add a finding or, after an explicit operator choice, attach its evidence to
+   * an existing finding with the same engagement, normalized target, and title.
+   * A possible duplicate is returned without changing state when no choice was
+   * supplied, so concurrent writers cannot silently create duplicate records.
+   */
+  async createOrMerge(finding: Finding, resolution?: FindingAddResolution): Promise<FindingAddResult> {
+    const [candidate] = validateFindings([finding]);
+    if (!candidate) throw new Error("Finding is invalid");
+    const identity = findingIdentity(candidate);
+
+    return withFileLock(this.#lockPath, async () => {
+      const findings = await this.#readUnlocked();
+      const matches = findings.filter((stored) => {
+        try {
+          return findingIdentity(stored) === identity;
+        } catch {
+          return false;
+        }
+      });
+
+      if (matches.length && !resolution) {
+        return { kind: "duplicate", matches: cloneFindings(matches) };
+      }
+
+      if (resolution?.kind === "merge") {
+        const index = findings.findIndex((stored) =>
+          stored.id === resolution.findingId && matches.some((match) => match.id === stored.id));
+        if (index < 0) throw new Error("The selected duplicate changed while the finding was being reviewed; retry the add operation");
+        const existing = findings[index]!;
+        const existingEvidence = new Set(existing.evidenceIds);
+        const addedEvidenceIds = candidate.evidenceIds.filter((id) => !existingEvidence.has(id));
+        if (!addedEvidenceIds.length) {
+          return { kind: "merged", finding: cloneFindings([existing])[0]!, addedEvidenceIds };
+        }
+        const now = Math.max(Date.now(), Date.parse(existing.updatedAt) + 1, Date.parse(existing.createdAt));
+        findings[index] = {
+          ...existing,
+          updatedAt: new Date(now).toISOString(),
+          evidenceIds: [...existing.evidenceIds, ...addedEvidenceIds],
+        };
+        const validated = validateFindings(findings);
+        await this.#writeUnlocked(validated);
+        return {
+          kind: "merged",
+          finding: cloneFindings([validated[index]!])[0]!,
+          addedEvidenceIds,
+        };
+      }
+
+      findings.push(candidate);
+      const validated = validateFindings(findings);
+      await this.#writeUnlocked(validated);
+      return { kind: "created", finding: cloneFindings([candidate])[0]! };
+    });
+  }
+
+  /** Change only the review status and timestamp; evidence links remain intact. */
+  async setStatus(engagementId: string, id: string, status: FindingStatus): Promise<FindingStatusUpdateResult> {
+    return withFileLock(this.#lockPath, async () => {
+      const findings = await this.#readUnlocked();
+      const index = findings.findIndex((finding) => finding.id === id && finding.engagementId === engagementId);
+      if (index < 0) return { kind: "not_found" };
+      const finding = findings[index]!;
+      if (finding.status === status) return { kind: "unchanged", finding: cloneFindings([finding])[0]! };
+
+      const previousStatus = finding.status;
+      const now = Math.max(Date.now(), Date.parse(finding.updatedAt) + 1, Date.parse(finding.createdAt));
+      findings[index] = { ...finding, status, updatedAt: new Date(now).toISOString() };
+      const validated = validateFindings(findings);
+      await this.#writeUnlocked(validated);
+      return {
+        kind: "updated",
+        finding: cloneFindings([validated[index]!])[0]!,
+        previousStatus,
+      };
+    });
   }
 
   /** Read, mutate, validate, and atomically persist findings while holding the process-shared lock. */

@@ -98,3 +98,101 @@ test("update returns a detached copy and persists the mutator result", async () 
     assert.equal(raw.version, 1);
   });
 });
+
+test("finding duplicate identity normalizes target and title, then merges only new evidence", async () => {
+  await withTempDir(async (directory) => {
+    const store = new FindingStore(directory);
+    const original = { ...makeFinding(), status: "accepted" };
+    await store.createOrMerge(original);
+    const candidate = {
+      ...makeFinding("finding-2"),
+      title: "  EXPOSED   response HEADER ",
+      target: "EXAMPLE.COM.",
+      severity: "critical",
+      confidence: "low",
+      description: "Updated description that should not overwrite the reviewed finding.",
+      remediation: "Different remediation text.",
+      evidenceIds: ["evidence-2", "evidence-1"],
+    };
+
+    const duplicate = await store.createOrMerge(candidate);
+    assert.equal(duplicate.kind, "duplicate");
+    assert.deepEqual(duplicate.matches.map((finding) => finding.id), [original.id]);
+    assert.deepEqual(await store.list(), [original]);
+
+    const merged = await store.createOrMerge(candidate, { kind: "merge", findingId: original.id });
+    assert.equal(merged.kind, "merged");
+    assert.deepEqual(merged.addedEvidenceIds, ["evidence-2"]);
+    assert.equal(merged.finding.id, original.id);
+    assert.equal(merged.finding.status, "accepted");
+    assert.equal(merged.finding.severity, original.severity);
+    assert.equal(merged.finding.description, original.description);
+    assert.deepEqual(merged.finding.evidenceIds, ["evidence-1", "evidence-2"]);
+    assert.equal((await store.list()).length, 1);
+  });
+});
+
+test("identical findings in different engagements do not match and separate creation is explicit", async () => {
+  await withTempDir(async (directory) => {
+    const store = new FindingStore(directory);
+    const original = makeFinding();
+    await store.createOrMerge(original);
+    const otherEngagement = { ...makeFinding("finding-other-engagement"), engagementId: "engagement-2" };
+    assert.equal((await store.createOrMerge(otherEngagement)).kind, "created");
+
+    const intentionalDuplicate = makeFinding("finding-distinct");
+    const result = await store.createOrMerge(intentionalDuplicate, { kind: "separate" });
+    assert.equal(result.kind, "created");
+    assert.equal((await store.list()).length, 3);
+  });
+});
+
+test("concurrent identical adds return a duplicate candidate instead of silently duplicating", async () => {
+  await withTempDir(async (directory) => {
+    const stores = [new FindingStore(directory), new FindingStore(directory)];
+    const [left, right] = await Promise.all([
+      stores[0].createOrMerge(makeFinding("finding-left")),
+      stores[1].createOrMerge(makeFinding("finding-right")),
+    ]);
+    assert.deepEqual([left.kind, right.kind].sort(), ["created", "duplicate"]);
+    assert.equal((await stores[0].list()).length, 1);
+  });
+});
+
+test("status review records transitions without changing evidence and ignores no-op updates", async () => {
+  await withTempDir(async (directory) => {
+    const store = new FindingStore(directory);
+    const original = makeFinding();
+    await store.save([original]);
+
+    const unchanged = await store.setStatus(original.engagementId, original.id, "open");
+    assert.equal(unchanged.kind, "unchanged");
+    if (unchanged.kind !== "unchanged") throw new Error("Expected unchanged status");
+    assert.equal(unchanged.finding.updatedAt, original.updatedAt);
+
+    const updated = await store.setStatus(original.engagementId, original.id, "resolved");
+    assert.equal(updated.kind, "updated");
+    if (updated.kind !== "updated") throw new Error("Expected status transition");
+    assert.equal(updated.previousStatus, "open");
+    assert.equal(updated.finding.status, "resolved");
+    assert.deepEqual(updated.finding.evidenceIds, original.evidenceIds);
+    assert.ok(Date.parse(updated.finding.updatedAt) >= Date.parse(original.updatedAt));
+
+    assert.equal((await store.setStatus("another-engagement", original.id, "accepted")).kind, "not_found");
+  });
+});
+
+test("evidence merge limits fail without replacing the original finding", async () => {
+  await withTempDir(async (directory) => {
+    const store = new FindingStore(directory);
+    const original = { ...makeFinding(), evidenceIds: Array.from({ length: 100 }, (_, index) => `evidence-${index}`) };
+    await store.save([original]);
+    const candidate = { ...makeFinding("finding-2"), evidenceIds: ["new-evidence"] };
+
+    await assert.rejects(
+      store.createOrMerge(candidate, { kind: "merge", findingId: original.id }),
+      /evidenceIds must contain at most 100/i,
+    );
+    assert.deepEqual(await store.list(), [original]);
+  });
+});

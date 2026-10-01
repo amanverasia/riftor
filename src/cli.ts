@@ -126,8 +126,8 @@ async function handleLocalCommand(
       "  /scope remove <target>      Remove a scope rule",
       "  /policy check <target> <activity>  Preview the policy decision",
       "  /evidence list              Verify and inspect captured evidence",
-      "  /finding add <title>        Record a reviewed finding linked to evidence",
-      "  /finding status <id> <state>  Update a finding (open/resolved/accepted)",
+      "  /finding add <title>        Record a finding and review possible duplicates",
+      "  /finding status <id> <state>  Review a finding (open/resolved/accepted)",
       "  /findings list              List findings for the active engagement",
       "  /report markdown|json|sarif Export an engagement report",
       "  /archive export <path>      Export all engagements, evidence, and findings",
@@ -411,11 +411,71 @@ async function addFinding(
     remediation,
     evidenceIds: [...new Set(evidenceIds)],
   };
-  await findingStore.update((findings) => {
-    findings.push(finding);
+
+  let result: Awaited<ReturnType<typeof findingStore.createOrMerge>>;
+  try {
+    result = await findingStore.createOrMerge(finding);
+  } catch (error) {
+    console.log(`Finding not saved: ${error instanceof Error ? error.message : "storage error"}`);
+    return;
+  }
+  let possibleDuplicateIds: string[] = [];
+  while (result.kind === "duplicate") {
+    possibleDuplicateIds = result.matches.map((match) => match.id);
+    console.log(`Possible duplicate for ${finding.target}: same normalized title and target in this engagement.`);
+    for (const match of result.matches) {
+      console.log(`  ${match.id}  ${match.severity.toUpperCase()}  ${match.status}  ${match.evidenceIds.length} evidence record(s)  ${match.title}`);
+    }
+    const choice = (await terminal.question("Type a matching finding ID to merge evidence, `new` to keep a separate finding, or `cancel`: ")).trim();
+    if (!choice || choice.toLowerCase() === "cancel") {
+      console.log("Finding not saved.");
+      return;
+    }
+    if (choice.toLowerCase() === "new") {
+      try {
+        result = await findingStore.createOrMerge(finding, { kind: "separate" });
+      } catch (error) {
+        console.log(`Finding not saved: ${error instanceof Error ? error.message : "storage error"}`);
+        return;
+      }
+      continue;
+    }
+    if (!result.matches.some((match) => match.id === choice)) {
+      console.log("Choose one of the listed finding IDs, `new`, or `cancel`.");
+      continue;
+    }
+    try {
+      result = await findingStore.createOrMerge(finding, { kind: "merge", findingId: choice });
+    } catch (error) {
+      console.log(`Finding not saved: ${error instanceof Error ? error.message : "storage error"}`);
+      return;
+    }
+  }
+
+  if (result.kind === "created") {
+    await store.appendAudit({
+      kind: "finding_created",
+      engagementId: engagement.id,
+      findingId: result.finding.id,
+      evidenceIds: result.finding.evidenceIds,
+      ...(possibleDuplicateIds.length ? { possibleDuplicateFindingIds: possibleDuplicateIds } : {}),
+    });
+    console.log(`Recorded finding ${result.finding.id} for ${result.finding.target}.`);
+    return;
+  }
+
+  await store.appendAudit({
+    kind: "finding_evidence_merged",
+    engagementId: engagement.id,
+    findingId: result.finding.id,
+    addedEvidenceIds: result.addedEvidenceIds,
+    status: result.finding.status,
   });
-  await store.appendAudit({ kind: "finding_created", engagementId: engagement.id, findingId: finding.id, evidenceIds: finding.evidenceIds });
-  console.log(`Recorded finding ${finding.id} for ${finding.target}.`);
+  if (result.addedEvidenceIds.length) {
+    console.log(`Added ${result.addedEvidenceIds.length} evidence record(s) to finding ${result.finding.id}; its ${result.finding.status} status and reviewed details were preserved.`);
+  } else {
+    console.log(`Finding ${result.finding.id} already includes all selected evidence; no changes were made.`);
+  }
 }
 
 async function updateFinding(
@@ -434,19 +494,23 @@ async function updateFinding(
     console.log("Status must be open, resolved, or accepted.");
     return;
   }
-  let updated = false;
-  await findingStore.update((findings) => {
-    const finding = findings.find((item) => item.id === id && item.engagementId === engagement.id);
-    if (!finding) return;
-    finding.status = rawStatus as FindingStatus;
-    finding.updatedAt = new Date().toISOString();
-    updated = true;
-  });
-  if (!updated) {
+  const result = await findingStore.setStatus(engagement.id, id, rawStatus as FindingStatus);
+  if (result.kind === "not_found") {
     console.log("Finding not found in the active engagement.");
     return;
   }
-  await store.appendAudit({ kind: "finding_status_updated", engagementId: engagement.id, findingId: id, status: rawStatus });
+  if (result.kind === "unchanged") {
+    console.log(`Finding ${id} is already ${rawStatus}; no changes were made.`);
+    return;
+  }
+  await store.appendAudit({
+    kind: "finding_status_updated",
+    engagementId: engagement.id,
+    findingId: id,
+    previousStatus: result.previousStatus,
+    status: result.finding.status,
+    evidenceIds: result.finding.evidenceIds,
+  });
   console.log(`Finding ${id} marked ${rawStatus}.`);
 }
 

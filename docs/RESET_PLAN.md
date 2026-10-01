@@ -121,7 +121,13 @@ with owner-only permissions. Engagement and finding mutations serialize across
 Riftor processes; malformed persisted engagement and finding data fails closed.
 Workspace archives now export/import engagements, evidence, and findings with
 schema validation and a checksum; imported engagements remain inactive.
-Finding deduplication and additional assessment adapters remain planned.
+Finding creation now detects exact duplicate identity within an engagement by
+normalized target and title, asks the operator whether to merge, create a
+separate record, or cancel, and preserves existing review fields while
+appending new evidence references. Status transitions keep all evidence links
+and record both statuses in the local audit log. SARIF retains its v1 finding
+fingerprint and adds a stable v2 fingerprint that excludes severity. Additional
+assessment adapters remain planned.
 
 ### 4. Extensibility and release
 
@@ -147,8 +153,9 @@ host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
 records are in place. Three policy-gated adapters for HTTP headers, DNS lookup,
 and TLS certificate inspection are wired into Pi; the Pi shell, file, and default
 tools stay disabled. Hashed evidence capture, operator-reviewed findings,
-Markdown/JSON/SARIF reports, and JSON workspace archives are in place.
-Additional adapters and findings deduplication remain planned.
+Markdown/JSON/SARIF reports, and JSON workspace archives are in place. Exact
+operator-confirmed finding deduplication is in place; additional adapters
+remain planned.
 
 ## Repository and website identity
 
