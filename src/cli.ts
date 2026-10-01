@@ -8,17 +8,30 @@ import { EngagementStore } from "./engagement/store.js";
 import type { Engagement } from "./engagement/types.js";
 import { evaluateAction } from "./security/policy.js";
 import { normalizeScopeRule, normalizeTarget } from "./security/scope.js";
+import { createHttpHeadersTool } from "./security/http-headers.js";
 
 async function main(): Promise<void> {
   const store = new EngagementStore(process.cwd());
-  const { session } = await createAgentSession({
-    cwd: process.cwd(),
-    noTools: "all",
-  });
   const terminal = createInterface({ input: stdin, output: stdout });
+  const httpHeadersTool = createHttpHeadersTool(store, async (message) => {
+    if (!stdin.isTTY || !stdout.isTTY) return false;
+    const answer = await terminal.question(`${message} [yes/no] `);
+    return answer.trim().toLowerCase() === "yes";
+  });
+  let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
+  try {
+    ({ session } = await createAgentSession({
+      cwd: process.cwd(),
+      tools: [httpHeadersTool.name],
+      customTools: [httpHeadersTool],
+    }));
+  } catch (error) {
+    terminal.close();
+    throw error;
+  }
 
   console.log("Riftor — standalone security assessment harness");
-  console.log("Pi runtime embedded. Security tools remain disabled during the rebuild.");
+  console.log("Pi runtime embedded. Only Riftor's approval-gated HTTP headers check is enabled.");
   console.log("Use /help for engagement and scope commands. Type /exit to quit.\n");
 
   const unsubscribe = session.subscribe((event) => {
@@ -58,6 +71,7 @@ async function handleLocalCommand(
       "Local commands:",
       "  /engagement                 Show the active engagement",
       "  /engagement create <name>   Record authorization and create one",
+      "                              Include http_headers in its authorized activities to use the HTTP check",
       "  /scope list                 Show included and excluded targets",
       "  /scope add <target>         Add a host, wildcard, IP, or CIDR",
       "  /scope exclude <target>     Add an explicit exclusion",

@@ -8,9 +8,9 @@ to install or open Pi separately. Riftor owns engagement authorization, scope
 enforcement, controlled security tool integrations, evidence, findings, and
 reports.
 
-The product is for authorized security assessments. The initial CLI starts an
-embedded Pi session with tools disabled. Assessment actions will be added only
-after engagement scope and policy enforcement are in place.
+The product is for authorized security assessments. Pi runs inside Riftor, and
+Riftor supplies the only active assessment tool: an approval-gated HTTP `HEAD`
+check limited to an authorized, in-scope host.
 
 ## Development
 
@@ -38,17 +38,24 @@ The complete product and delivery plan is in
 
 ## Current build
 
-The CLI can record an engagement's authorization, manage exact hosts, wildcard
-domains, IPs and CIDRs, and preview policy decisions. Pi's agent tools are
-disabled, so no security action can run yet.
+The CLI records an engagement's authorization, manages exact hosts, wildcard
+domains, IPs and CIDRs, and previews policy decisions. Its single network check
+is available only when the engagement authorizes the `http_headers` activity,
+the requested host is in scope, and the operator approves that individual
+request. The check sends one `HEAD` request to the host's standard HTTP or HTTPS
+port, does not follow redirects, and does not download a response body. Pi's
+built-in shell, file, and other tools remain disabled.
 
 ```text
 /engagement create <name>
 /scope add example.com
 /scope exclude admin.example.com
 /scope list
-/policy check example.com passive-review
+/policy check example.com http_headers
 ```
+
+When creating an engagement, enter `http_headers` among the authorized
+activities to enable this check. Starting Riftor makes no security request.
 
 This rewrite is at its bootstrap stage. The previous Python implementation is
 preserved in Git history; this branch contains the new standalone CLI.

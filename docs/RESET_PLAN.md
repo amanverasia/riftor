@@ -86,6 +86,13 @@ must not inherit arbitrary shell access merely because Pi can run shell tools.
   activity set; deny by default without an interactive approver.
 - Add bounded concurrency, request rate, timeout, and cancellation controls.
 
+Progress: Pi's built-in tools are suppressed and the only enabled tool is a
+Riftor-owned HTTP `HEAD` adapter. It checks the active engagement, exact host
+scope, `http_headers` activity, and a fresh operator confirmation; it rejects
+custom ports, does not follow redirects, and records decisions and outcomes in
+the local audit log. Broader lifecycle hooks, centralized adapter registration,
+and shared concurrency/rate controls remain planned.
+
 ### 3. Evidence and assessment workflow
 
 - Add durable evidence capture, provenance, findings, triage, and deduplication.
@@ -114,9 +121,9 @@ must not inherit arbitrary shell access merely because Pi can run shell tools.
 
 The standalone CLI, local engagement record, authorization expiry checks,
 host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
-records are in place. Pi tools remain disabled. The policy core is not yet wired
-to any network-capable adapter; those come after the approval and execution
-gateway is complete.
+records are in place. One policy-gated HTTP headers adapter is wired into Pi;
+the Pi shell, file, and default tools stay disabled. Evidence capture, findings,
+reporting, and additional adapters remain planned.
 
 ## Repository and website identity
 
@@ -124,10 +131,9 @@ gateway is complete.
 - Website repository: `https://github.com/amanverasia/riftor-website`
 - Website domain: `https://riftor.dev`
 
-The application repository is checked out here. The website repository is not
-present in this workspace, so its source and deployment settings must be changed
-in that repository once it is available. Updating this checkout's Git remote
-does not transfer or rename a GitHub repository.
+The application repository is checked out here. The website source is in the
+separate `amanverasia/riftor-website` repository. The live domain has not been
+redeployed as part of this application reset.
 
 ## Pi references
 
