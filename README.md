@@ -12,11 +12,10 @@ The product is for authorized security assessments. Pi runs inside Riftor, and
 Riftor supplies approval-gated HTTP headers, DNS lookup, and TLS certificate
 checks limited to authorized, in-scope targets.
 
-## Development
+## Install and first run
 
 Requirements: Node.js 22.19 or newer and credentials for a supported model
-provider. Riftor uses Pi's provider credentials and model configuration, so no
-separate Pi CLI installation is required.
+provider. Riftor embeds Pi's TypeScript runtime; no separate Pi CLI is required.
 
 Install the current build directly from GitHub:
 
@@ -25,16 +24,12 @@ npm install --global github:amanverasia/riftor
 riftor
 ```
 
-No separate Pi CLI is required.
-
-Set a provider key in the environment before starting, for example
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`, then use `/models`
-and `/model <provider/model>` inside Riftor. Riftor keeps its Pi model and
-credential configuration in `~/.riftor/agent` by default; set `RIFTOR_AGENT_DIR`
-to use another location. It does not load Pi extensions, skills, prompts, or
-project context into the assessment process. See
-[Pi's provider authentication guide](https://pi.dev/docs/latest/providers) for
-supported providers and credential setup.
+Set provider credentials in the process environment or configure the embedded
+runtime's private agent directory, then select an available model with
+`/models` and `/model <provider/model>`. Riftor uses `~/.riftor/agent` by
+default and does not automatically read your personal `~/.pi/agent` directory.
+See the [first-run and provider setup guide](docs/GETTING_STARTED.md) for
+workspace setup, credentials, engagement authorization, and troubleshooting.
 
 For local development:
 
