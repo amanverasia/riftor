@@ -22,8 +22,9 @@ configured product domain is `https://riftor.dev`.
 - App-code checkpoint: `6f2180c` — `Add SARIF 2.1.0 assessment reports`.
 - `AGENTS.md` and this handoff document are added in a documentation-only
   commit after that application checkpoint; check current HEAD before resuming.
-- Latest hosted CI run: `36858157762`, success.
-- Working tree was clean before adding this handoff document.
+- Latest hosted CI run before the current SARIF follow-up: `36858424296`, success.
+- Working tree was clean before this follow-up; SARIF changes below are currently
+  uncommitted and unpushed.
 
 ## Implemented
 
@@ -69,6 +70,20 @@ At `6f2180c`, local checks passed:
 SARIF output was checked for core 2.1.0 fields and finding-state handling. It
 has not been run through a full external schema validator.
 
+## Resumed SARIF follow-up
+
+- SARIF logs now declare the OASIS SARIF 2.1.0 Errata 01 schema and the Riftor
+  package semantic version.
+- CI generates a report fixture, validates it with Microsoft SARIF Multitool
+  `5.7.0`, then projects the rule, level, and network target through the same
+  consumer.
+- Local verification on 2026-10-01: `npm test` passed (45 tests),
+  `npm audit --omit=dev` found zero vulnerabilities, Microsoft Multitool
+  validation passed without warnings, and the consumer projection returned
+  `RIFTOR-FINDING`, `Error`, and `example.com`.
+- Hosted CI `36858424296` passed before these edits; CI has not yet run against
+  the uncommitted changes.
+
 ## Known limitations and next steps
 
 This is an active development build, not a finished or security-certified
@@ -81,8 +96,8 @@ access control.
 
 Suggested next work, in order:
 
-1. Validate generated SARIF against the official SARIF 2.1.0 schema and test it
-   with a consumer; keep target/evidence semantics clear for file-centric UIs.
+1. After these changes are pushed, confirm the hosted schema-validation and
+   consumer checks pass.
 2. Finish finding deduplication/review semantics without deleting original
    evidence.
 3. Improve install/release documentation and cross-platform CI. Do not publish

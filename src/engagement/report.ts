@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { EvidenceRecord } from "./evidence.js";
 import type { Finding } from "./findings.js";
 import type { Engagement } from "./types.js";
 import { normalizeTarget } from "../security/scope.js";
+
+const riftorVersion = (createRequire(import.meta.url)("../../package.json") as { version: string }).version;
 
 export interface ReportData {
   generatedAt: string;
@@ -39,11 +42,13 @@ export async function writeReport(
 
 function renderSarif(data: ReportData) {
   return {
+    $schema: "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
     version: "2.1.0",
     runs: [{
       tool: {
         driver: {
           name: "Riftor",
+          semanticVersion: riftorVersion,
           informationUri: "https://riftor.dev",
           rules: [{
             id: "RIFTOR-FINDING",

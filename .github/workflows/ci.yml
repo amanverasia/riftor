@@ -19,3 +19,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Generate SARIF fixture
+        run: node scripts/create-sarif-fixture.mjs "$RUNNER_TEMP/riftor.sarif"
+      - name: Validate SARIF 2.1.0 output
+        run: npx --yes @microsoft/sarif-multitool@5.7.0 validate "$RUNNER_TEMP/riftor.sarif"
+      - name: Check SARIF consumer projection
+        run: |
+          npx --yes @microsoft/sarif-multitool@5.7.0 project "$RUNNER_TEMP/riftor.sarif" --columns RuleId,Level,Properties.target --format ndjson --output "$RUNNER_TEMP/riftor-projection.ndjson"
+          node scripts/assert-sarif-projection.mjs "$RUNNER_TEMP/riftor-projection.ndjson"

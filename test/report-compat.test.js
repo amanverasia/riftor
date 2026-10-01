@@ -5,6 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { writeReport } from "../dist/engagement/report.js";
 
+const packageInfo = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+
 test("Markdown reports render legacy HTTP evidence without pinned address fields", async () => {
   const directory = await mkdtemp(join(tmpdir(), "riftor-report-compat-"));
   try {
@@ -82,8 +84,10 @@ test("SARIF 2.1.0 reports preserve finding severity and evidence provenance", as
     });
     assert.match(path, /\.sarif\.json$/);
     const sarif = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(sarif.$schema, "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json");
     assert.equal(sarif.version, "2.1.0");
     assert.equal(sarif.runs[0].tool.driver.name, "Riftor");
+    assert.equal(sarif.runs[0].tool.driver.semanticVersion, packageInfo.version);
     assert.equal(sarif.runs[0].results.length, 2);
     assert.equal(sarif.runs[0].results[0].level, "error");
     assert.deepEqual(sarif.runs[0].results[0].properties.evidenceIds, ["evidence-sarif"]);
