@@ -115,7 +115,8 @@ next written, preserving its existing engagement.
 
 Progress: operators can create and update findings tied to verified evidence,
 and export Markdown or JSON reports containing engagement scope, authorization,
-findings, and evidence provenance. Report output is stored under `.riftor/reports`
+findings, and evidence provenance. SARIF 2.1.0 export is available for findings
+and evidence references. Report output is stored under `.riftor/reports`
 with owner-only permissions. Engagement and finding mutations serialize across
 Riftor processes; malformed persisted engagement and finding data fails closed.
 Workspace archives now export/import engagements, evidence, and findings with
@@ -146,8 +147,8 @@ host/domain/IP/CIDR scope matching, exclusions, policy previews, and local audit
 records are in place. Three policy-gated adapters for HTTP headers, DNS lookup,
 and TLS certificate inspection are wired into Pi; the Pi shell, file, and default
 tools stay disabled. Hashed evidence capture, operator-reviewed findings,
-Markdown/JSON reports, and JSON workspace archives are in place. Additional
-adapters and findings deduplication remain planned.
+Markdown/JSON/SARIF reports, and JSON workspace archives are in place.
+Additional adapters and findings deduplication remain planned.
 
 ## Repository and website identity
 

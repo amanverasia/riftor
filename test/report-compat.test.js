@@ -60,3 +60,39 @@ test("report timestamps cannot escape the reports directory", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("SARIF 2.1.0 reports preserve finding severity and evidence provenance", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "riftor-sarif-report-"));
+  try {
+    const engagement = {
+      id: "sarif-engagement", name: "SARIF engagement", createdAt: "2026-01-01T00:00:00.000Z",
+      authorization: { reference: "AUTH-SARIF", authorizedBy: "Operator", startsAt: "2026-01-01T00:00:00.000Z", expiresAt: "2027-01-01T00:00:00.000Z", activities: ["http_headers"] },
+      scope: { include: ["example.com"], exclude: [] },
+    };
+    const finding = {
+      id: "finding-sarif", engagementId: engagement.id, createdAt: "2026-02-01T00:00:00.000Z", updatedAt: "2026-02-01T00:00:00.000Z",
+      title: "Sensitive header", severity: "high", confidence: "confirmed", status: "open", target: "example.com",
+      description: "The server revealed unnecessary information.", remediation: "Remove the header.", evidenceIds: ["evidence-sarif"],
+    };
+    const acceptedFinding = { ...finding, id: "finding-accepted", title: "Accepted risk", severity: "medium", status: "accepted", evidenceIds: [] };
+    const resolvedFinding = { ...finding, id: "finding-resolved", title: "Resolved issue", severity: "low", status: "resolved", evidenceIds: [] };
+    const path = await writeReport(directory, "sarif", {
+      generatedAt: "2026-10-01T00:00:00.000Z", engagement, findings: [finding, acceptedFinding, resolvedFinding],
+      evidence: [{ id: "evidence-sarif", engagementId: engagement.id, activity: "http_headers", target: "example.com", capturedAt: "2026-02-01T00:00:00.000Z", sha256: "abc123" }],
+    });
+    assert.match(path, /\.sarif\.json$/);
+    const sarif = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(sarif.version, "2.1.0");
+    assert.equal(sarif.runs[0].tool.driver.name, "Riftor");
+    assert.equal(sarif.runs[0].results.length, 2);
+    assert.equal(sarif.runs[0].results[0].level, "error");
+    assert.deepEqual(sarif.runs[0].results[0].properties.evidenceIds, ["evidence-sarif"]);
+    assert.deepEqual(Object.keys(sarif.runs[0].results[0].partialFingerprints), ["riftorFinding/v1"]);
+    assert.match(sarif.runs[0].results[0].partialFingerprints["riftorFinding/v1"], /^[a-f\d]{64}$/);
+    assert.equal(sarif.runs[0].results[1].properties.status, "accepted");
+    assert.equal(sarif.runs[0].results[1].suppressions[0].status, "accepted");
+    assert.equal(sarif.runs[0].properties.evidence[0].sha256, "abc123");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -129,7 +129,7 @@ async function handleLocalCommand(
       "  /finding add <title>        Record a reviewed finding linked to evidence",
       "  /finding status <id> <state>  Update a finding (open/resolved/accepted)",
       "  /findings list              List findings for the active engagement",
-      "  /report markdown|json       Export an engagement report",
+      "  /report markdown|json|sarif Export an engagement report",
       "  /archive export <path>      Export all engagements, evidence, and findings",
       "  /archive import <path>      Import an archive into an empty workspace",
       "  /exit                       Quit",
@@ -284,8 +284,8 @@ async function handleLocalCommand(
     return true;
   }
 
-  if (input === "/report markdown" || input === "/report json") {
-    const format = input.endsWith("json") ? "json" : "markdown";
+  if (["/report markdown", "/report json", "/report sarif"].includes(input)) {
+    const format = input.endsWith("json") ? "json" : input.endsWith("sarif") ? "sarif" : "markdown";
     await generateReport(format, store, evidenceStore, findingStore);
     return true;
   }
@@ -451,7 +451,7 @@ async function updateFinding(
 }
 
 async function generateReport(
-  format: "markdown" | "json",
+  format: "markdown" | "json" | "sarif",
   store: EngagementStore,
   evidenceStore: EvidenceStore,
   findingStore: FindingStore,

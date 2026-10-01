@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { EvidenceRecord } from "./evidence.js";
 import type { Finding } from "./findings.js";
 import type { Engagement } from "./types.js";
+import { normalizeTarget } from "../security/scope.js";
 
 export interface ReportData {
   generatedAt: string;
@@ -13,7 +15,7 @@ export interface ReportData {
 
 export async function writeReport(
   workdir: string,
-  format: "markdown" | "json",
+  format: "markdown" | "json" | "sarif",
   data: ReportData,
 ): Promise<string> {
   const generatedAt = new Date(data.generatedAt);
@@ -23,11 +25,83 @@ export async function writeReport(
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await chmod(join(workdir, ".riftor"), 0o700);
   await chmod(directory, 0o700);
-  const path = join(directory, `assessment-${timestamp}.${format === "markdown" ? "md" : "json"}`);
-  const content = format === "json" ? `${JSON.stringify(data, null, 2)}\n` : renderMarkdown(data);
+  const extension = format === "markdown" ? "md" : format === "sarif" ? "sarif.json" : "json";
+  const path = join(directory, `assessment-${timestamp}.${extension}`);
+  const content = format === "json"
+    ? `${JSON.stringify(data, null, 2)}\n`
+    : format === "sarif"
+      ? `${JSON.stringify(renderSarif(data), null, 2)}\n`
+      : renderMarkdown(data);
   await writeFile(path, content, { mode: 0o600, flag: "wx" });
   await chmod(path, 0o600);
   return path;
+}
+
+function renderSarif(data: ReportData) {
+  return {
+    version: "2.1.0",
+    runs: [{
+      tool: {
+        driver: {
+          name: "Riftor",
+          informationUri: "https://riftor.dev",
+          rules: [{
+            id: "RIFTOR-FINDING",
+            name: "OperatorReviewedFinding",
+            shortDescription: { text: "A security finding recorded and reviewed in Riftor." },
+            helpUri: "https://github.com/amanverasia/riftor#current-build",
+          }],
+        },
+      },
+      results: data.findings.filter((finding) => finding.status !== "resolved").map((finding) => ({
+        ruleId: "RIFTOR-FINDING",
+        ruleIndex: 0,
+        level: finding.severity === "critical" || finding.severity === "high"
+          ? "error"
+          : finding.severity === "medium"
+            ? "warning"
+            : "note",
+        message: { text: `${finding.title} [${finding.severity}] — ${finding.target} (${finding.confidence}, ${finding.status})\n\n${finding.description}\n\nRemediation: ${finding.remediation}` },
+        partialFingerprints: { "riftorFinding/v1": findingFingerprint(finding) },
+        ...(finding.status === "accepted" ? {
+          suppressions: [{ kind: "external", status: "accepted", justification: "Accepted by the operator in Riftor." }],
+        } : {}),
+        properties: {
+          severity: finding.severity,
+          confidence: finding.confidence,
+          status: finding.status,
+          target: finding.target,
+          engagementId: finding.engagementId,
+          evidenceIds: finding.evidenceIds,
+          createdAt: finding.createdAt,
+          updatedAt: finding.updatedAt,
+        },
+      })),
+      properties: {
+        generatedAt: data.generatedAt,
+        engagement: data.engagement,
+        evidence: data.evidence.map((record) => ({
+          id: record.id,
+          engagementId: record.engagementId,
+          activity: record.activity,
+          target: record.target,
+          capturedAt: record.capturedAt,
+          sha256: record.sha256,
+        })),
+      },
+    }],
+  };
+}
+
+function findingFingerprint(finding: Finding): string {
+  let target: string;
+  try {
+    target = normalizeTarget(finding.target);
+  } catch {
+    target = finding.target.trim().toLowerCase();
+  }
+  const identity = JSON.stringify([target, finding.severity, finding.title.trim().toLowerCase()]);
+  return createHash("sha256").update(identity).digest("hex");
 }
 
 function renderMarkdown(data: ReportData): string {

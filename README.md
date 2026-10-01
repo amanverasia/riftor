@@ -76,7 +76,7 @@ entry. Pi's built-in shell, file, and other tools remain disabled.
 /evidence list
 /finding add Missing strict transport security
 /findings list
-/report markdown
+/report markdown|json|sarif
 /archive export ./riftor-workspace.json
 ```
 
@@ -93,7 +93,9 @@ target and activity. The budget persists across restarts and engagements;
 failed or cancelled approved attempts still use a slot.
 Operators can record severity- and confidence-rated findings tied to evidence,
 track each as open, resolved, or accepted, and export a local Markdown or JSON
-report with `/report markdown` or `/report json`. `/archive export <path>` saves
+report with `/report markdown`, `/report json`, or `/report sarif`. SARIF
+output uses version 2.1.0 and carries finding metadata plus evidence references
+for compatible SARIF consumers ([OASIS SARIF standard](https://www.oasis-open.org/standard/sarifv2-1-os/)). Resolved findings are omitted and accepted findings are marked suppressed. Network targets and evidence stay in Riftor result properties, so file-centric code-scanning interfaces may not display them as locations. `/archive export <path>` saves
 all engagements, evidence, and findings as one JSON archive. Import it with
 `/archive import <path>` from a workspace with no `.riftor` directory. Imported
 engagements stay inactive until selected with `/engagement use`; review their
