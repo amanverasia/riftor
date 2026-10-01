@@ -45,6 +45,7 @@
     "prepare": "npm run build",
     "prebuild": "node scripts/clean.mjs",
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.js",
     "start": "node dist/cli.js"
   }
 }
