@@ -8,7 +8,9 @@ import { EngagementStore } from "../dist/engagement/store.js";
 import { authorizeAction } from "../dist/security/action-gateway.js";
 import { reserveActionBudget } from "../dist/security/action-budget.js";
 
-const testBudget = { targetCooldownMs: 50, maxActions: 2, windowMs: 60_000 };
+// This test checks persisted limits, not time expiry, so keep its deadline
+// well above filesystem and CI scheduling delays.
+const testBudget = { targetCooldownMs: 60 * 60_000, maxActions: 2, windowMs: 24 * 60 * 60_000 };
 
 function engagement() {
   const now = Date.now();

@@ -44,6 +44,7 @@ The complete product and delivery plan is in
 [`docs/RESET_PLAN.md`](docs/RESET_PLAN.md).
 The current security boundaries and limitations are in
 [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+The v5 alpha scope and release notes are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Current build
 
@@ -109,8 +110,10 @@ already linked. Status changes record the previous and new status in the local
 audit log and never remove evidence links. SARIF retains the original v1
 fingerprint and adds a v2 fingerprint that remains stable when severity changes.
 
-This rewrite is at its bootstrap stage. The previous Python implementation is
-preserved in Git history; this branch contains the new standalone CLI.
+Riftor v5 is an early alpha with a deliberately limited set of policy-gated
+checks. It is not a broad penetration-testing platform. The previous Python
+implementation is preserved in Git history; this branch contains the new
+standalone CLI.
 
 ## Project links
 
