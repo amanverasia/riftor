@@ -9,15 +9,17 @@ checkout.
 Riftor's application source is public on GitHub and the current `main` branch
 passes CI. The website source has been updated for the Pi-powered rebuild and
 is already on the website repository's `main`, but that version is not live at
-`riftor.dev`. A local website security remediation and CI workflow are prepared
-on a separate branch. Riftor has no v5 release or published npm package yet.
+`riftor.dev`. The website security remediation and CI workflow are now merged
+to its `main`. The application alpha preparation is also merged to `main`.
+Riftor has no v5 release or published npm package yet.
 
 Keep the application and website in their separate repositories. There is no
-cross-repository merge to perform. The website dependency has a version- and
-context-checked local security fix pending review; the deployment must still be
-configured and verified. The application is prepared as `5.0.0-alpha.0`;
-choosing a distribution target and publishing it remain future work. Do not
-deploy or publish until the user explicitly asks for that external action.
+cross-repository merge to perform. A version- and context-checked local
+security fix for the website dependency is in place until upstream behavior is
+verified as fixed. The live domain still needs hosting verification and an
+explicit deployment request. The application is at `5.0.0-alpha.0`; choosing a
+distribution target and publishing it remain future work. Do not deploy or
+publish until the user explicitly asks for that external action.
 
 ## Product and repository context
 
@@ -174,53 +176,45 @@ credential; do not ask the user to paste a replacement into chat.
 
 ## Recommended launch sequence
 
-1. Review and merge the prepared website security branch after hosted CI
-   passes. It pins `http-cache-semantics` 4.3.0 and applies a version- and
-   context-checked local patch for stale shared responses. Remove that local
-   patch only after upstream behavior is verified as fixed.
-2. Determine how `riftor.dev` is currently hosted and which deployment target
-   the user wants. Configure the website repo's deployment workflow and host
-   settings, deploy a preview, and check its copy, links, and rendering. Only
-   after that should the user approve the live-domain cutover.
-3. Review and merge the prepared application alpha branch after hosted CI
-   passes. It carries the supported Node 22 type definitions, resolves the
-   nested `brace-expansion` version, updates the embedded Pi runtime, and
-   stabilizes the persistence test that failed under PR #5's short timer.
-4. Use the prepared `5.0.0-alpha.0` version to describe the current limited
+1. Keep the website's local `http-cache-semantics` patch until upstream
+   behavior is verified as fixed, then remove it and rerun audit, tests, and
+   build.
+2. When deployment is requested, verify how `riftor.dev` is hosted and which
+   target is intended. Check the new site copy, links, and rendering before any
+   live-domain cutover.
+3. Use `5.0.0-alpha.0` to describe the current limited
    feature set accurately; do not present it as a feature-complete
    penetration-testing platform.
-5. Local package preparation and release notes are ready in the working tree.
-   Decide whether the distribution target is a GitHub release, npm, or both;
-   neither has been published. Create a tag or release only on an explicit
-   request.
-6. Re-check hosted CI and website deployment status. Publish the package or
+4. Decide whether the distribution target is a GitHub release, npm, or both;
+   neither has been published. Create a tag, release, or publication only on
+   an explicit request.
+5. Re-check hosted CI and website deployment status. Publish the package or
    switch the live domain only on an explicit user request.
 
-## Prepared remediation branches (2026-10-05)
+## Merged launch remediations (2026-10-05)
 
-- Application branch `codex/riftor-alpha-launch` upgrades the embedded Pi
-  runtime to 1.0.2, TypeBox to 1.3.34, and Node 22 declarations to 22.20.5;
-  its lockfile resolves nested `brace-expansion` to 5.0.12. It also contains
-  the alpha changelog/version prep and a longer test-only action-budget window.
-  Local verification passed: `npm test` (50/50), `npm audit --omit=dev`
-  (zero), `npm pack --dry-run`, `node dist/cli.js --help`, and
-  `git diff --check`.
-- Website branch `codex/http-cache-max-stale-fix` pins
-  `http-cache-semantics` 4.3.0 and applies an idempotent, fail-closed
-  postinstall patch for the max-stale response-directive bypass. Regression
-  tests cover blocked and allowed stale reuse. A new GitHub Actions workflow
-  runs install, full audit, tests, and build. Local clean `npm ci`, `npm audit`
-  (zero), `npm test`, `npm run build`, and `git diff --check` passed.
-- Both branches are prepared for GitHub review. No release, package
-  publication, website deployment, domain, DNS, or hosting changes were made.
-- Pull requests are [application #8](https://github.com/amanverasia/riftor/pull/8)
-  and [website #1](https://github.com/amanverasia/riftor-website/pull/1).
-  Hosted CI passed on their first pushed commits (application run
-  [37284702484](https://github.com/amanverasia/riftor/actions/runs/37284702484),
-  website run
-  [37284706192](https://github.com/amanverasia/riftor-website/actions/runs/37284706192)).
-  Recheck the latest PR heads before merging. Application PRs #5–#7 remain
-  open and are superseded by #8; they have not been merged or closed.
+- Application PR [#8](https://github.com/amanverasia/riftor/pull/8) merged as
+  [`a7123ae`](https://github.com/amanverasia/riftor/commit/a7123aea58c5edbe10f97353b958933504ee6f51).
+  It updates Pi to 1.0.2, TypeBox to 1.3.34, and Node 22 declarations to
+  22.20.5; the lockfile resolves nested `brace-expansion` to 5.0.12. It also
+  includes the `5.0.0-alpha.0` changelog/version prep and the test-only
+  action-budget window fix. Local `npm test` passed 50/50,
+  `npm audit --omit=dev` found zero vulnerabilities, and package/CLI checks
+  passed. Post-merge main CI passed in
+  [run 37285644109](https://github.com/amanverasia/riftor/actions/runs/37285644109).
+- Website PR [#1](https://github.com/amanverasia/riftor-website/pull/1) merged
+  as [`6b250f6`](https://github.com/amanverasia/riftor-website/commit/6b250f689afc5666ff52a1f02ced973f417883a7).
+  It pins `http-cache-semantics` 4.3.0, applies an idempotent fail-closed
+  postinstall patch for the max-stale response-directive bypass, and adds
+  regression tests plus CI. Clean `npm ci`, audit, tests, and build passed.
+  Post-merge main CI passed in
+  [run 37285650022](https://github.com/amanverasia/riftor-website/actions/runs/37285650022).
+- Application Dependabot PRs [#5](https://github.com/amanverasia/riftor/pull/5),
+  [#6](https://github.com/amanverasia/riftor/pull/6), and
+  [#7](https://github.com/amanverasia/riftor/pull/7) remain open but are
+  superseded by #8; they have not been merged or closed.
+- No package release or publication, website deployment, domain, DNS, or
+  hosting changes were made.
 
 ## Security and verification constraints
 
