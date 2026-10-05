@@ -213,6 +213,14 @@ credential; do not ask the user to paste a replacement into chat.
   (zero), `npm test`, `npm run build`, and `git diff --check` passed.
 - Both branches are prepared for GitHub review. No release, package
   publication, website deployment, domain, DNS, or hosting changes were made.
+- Pull requests are [application #8](https://github.com/amanverasia/riftor/pull/8)
+  and [website #1](https://github.com/amanverasia/riftor-website/pull/1).
+  Hosted CI passed on their first pushed commits (application run
+  [37284702484](https://github.com/amanverasia/riftor/actions/runs/37284702484),
+  website run
+  [37284706192](https://github.com/amanverasia/riftor-website/actions/runs/37284706192)).
+  Recheck the latest PR heads before merging. Application PRs #5–#7 remain
+  open and are superseded by #8; they have not been merged or closed.
 
 ## Security and verification constraints
 
