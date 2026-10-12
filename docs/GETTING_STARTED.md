@@ -12,7 +12,9 @@ configuration separate from a personal Pi installation by default.
 
 ## Install and start
 
-Install the current repository build:
+Riftor v5 has no published release yet (no npm package, tag, or GitHub
+release). Until the first release is tagged and published, install the
+pre-release snapshot from GitHub:
 
 ```sh
 npm install --global github:amanverasia/riftor

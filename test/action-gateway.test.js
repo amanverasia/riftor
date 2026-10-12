@@ -6,7 +6,7 @@ import test from "node:test";
 import { EvidenceStore } from "../dist/engagement/evidence-store.js";
 import { EngagementStore } from "../dist/engagement/store.js";
 import { authorizeAction } from "../dist/security/action-gateway.js";
-import { reserveActionBudget } from "../dist/security/action-budget.js";
+import { DEFAULT_ACTION_BUDGET, reserveActionBudget } from "../dist/security/action-budget.js";
 
 // This test checks persisted limits, not time expiry, so keep its deadline
 // well above filesystem and CI scheduling delays.
@@ -223,5 +223,44 @@ test("concurrent evidence appends serialize into one valid hash chain", async ()
     for (let index = 1; index < records.length; index += 1) {
       assert.equal(records[index].previousSha256, records[index - 1].sha256);
     }
+  });
+});
+
+test("production action budget enforces the shipped per-target cooldown", async () => {
+  // Pin the shipped production budget: 2 s per-target cooldown, 60 actions
+  // per rolling 60 s window (src/security/action-budget.ts).
+  assert.deepEqual({ ...DEFAULT_ACTION_BUDGET }, { targetCooldownMs: 2_000, maxActions: 60, windowMs: 60_000 });
+  await withTempDir(async (directory) => {
+    const request = { kind: "http_headers", activity: "http_headers", target: "example.com", approvalMessage: "approve" };
+    const dependencies = (engagementStore) => ({
+      engagementStore,
+      evidenceStore: new EvidenceStore(directory),
+      approve: async () => true,
+      budgetConfig: DEFAULT_ACTION_BUDGET,
+    });
+    const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+    // A CI stall longer than the 2 s production cooldown must not fail this
+    // test: wait out any stale reservation, then require an immediate
+    // follow-up request to see the cooldown. Retry the round if a stall
+    // lands between the two requests.
+    let denied = null;
+    for (let round = 0; round < 5 && !denied; round += 1) {
+      let first;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const store = new EngagementStore(directory);
+        if (attempt === 0 && round === 0) await store.save(engagement());
+        first = await authorizeAction({ ...request }, dependencies(store));
+        if (first.allowed) break;
+        assert.match(first.reason ?? "", /Rate limit reached \(target_cooldown\)/);
+        await sleep(500);
+      }
+      assert.equal(first.allowed, true);
+      if (first.allowed) await first.release();
+      const second = await authorizeAction({ ...request }, dependencies(new EngagementStore(directory)));
+      if (second.allowed) await second.release();
+      else denied = second;
+    }
+    assert.ok(denied, "expected a production-budget target_cooldown denial within 5 rounds");
+    assert.match(denied.reason, /Rate limit reached \(target_cooldown\)/);
   });
 });

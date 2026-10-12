@@ -1,16 +1,6 @@
 node_modules/
 dist/
 coverage/
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.ruff_cache/
-.superpowers/
-docs/superpowers/
-dev/
-riftor/
-tests/
 .env
 .env.*
 !.env.example

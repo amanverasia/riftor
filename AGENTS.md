@@ -11,6 +11,21 @@ former RIFT philosophy; do not reintroduce it as a product requirement.
 The application source is this repository,
 [`amanverasia/riftor`](https://github.com/amanverasia/riftor). The separate
 website source is [`amanverasia/riftor-website`](https://github.com/amanverasia/riftor-website).
+Keep these as separate repositories; coordinate links and releases without
+merging their Git histories.
+
+## Launch handoff
+
+Read [`docs/LAUNCH_HANDOFF.md`](docs/LAUNCH_HANDOFF.md) before launch or release
+work. It records the latest verified state of the application repo, website
+repo, live domain, CI, dependencies, and pending release work. Its status is a
+dated snapshot: re-check GitHub, the package registry, and the live site before
+acting on it, then update the handoff when launch status changes.
+
+Never put API keys or other credentials in the handoff, this file, source
+control, or command history. Do not deploy `riftor.dev`, change domain/DNS or
+hosting settings, publish a package, or create a release unless the user
+explicitly asks for that external action.
 
 ## Security boundaries
 

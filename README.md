@@ -17,7 +17,9 @@ checks limited to authorized, in-scope targets.
 Requirements: Node.js 22.19 or newer and credentials for a supported model
 provider. Riftor embeds Pi's TypeScript runtime; no separate Pi CLI is required.
 
-Install the current build directly from GitHub:
+Riftor v5 has no published release yet: no npm package, version tag, or
+GitHub release. Until the first release is tagged and published, install
+the pre-release snapshot directly from GitHub:
 
 ```sh
 npm install --global github:amanverasia/riftor
